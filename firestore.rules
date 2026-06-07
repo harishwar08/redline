@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Per-user isolation + basic field validation. A signed-in user can read/write
+// only their own document tree under users/{uid}; writes must match the app's
+// schema. Everything else is denied by default (no recursive wildcard).
+//
+// Note: for set(merge:true) writes, request.resource.data is the FULL document
+// as it will exist after the merge, so these validators see every field.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function validStint() {
+      let d = request.resource.data;
+      return d.title is string && d.title.size() >= 1 && d.title.size() <= 200
+        && d.targetLaps is int && d.targetLaps >= 1 && d.targetLaps <= 99
+        && d.completedLaps is int && d.completedLaps >= 0
+        && d.isDone is bool
+        && d.order is int && d.order >= 0
+        && d.createdAt is timestamp
+        && (!('notes' in d) || d.notes is string);
+    }
+
+    function validLap() {
+      let d = request.resource.data;
+      return d.durationSeconds is int && d.durationSeconds >= 0
+        && d.type in ['focus', 'pitStop']
+        && d.dateKey is string && d.dateKey.size() <= 10
+        && d.startedAt is timestamp
+        && d.endedAt is timestamp
+        && (!('stintId' in d) || d.stintId == null || d.stintId is string);
+    }
+
+    function validProfile(p) {
+      return p.name is string && p.name.size() <= 100
+        && p.team is string && p.team.size() <= 100
+        && p.country is string && p.country.size() <= 60
+        && p.number is int && p.number >= 0 && p.number <= 9999
+        && p.liveryColor is string && p.liveryColor.size() <= 16
+        && p.createdAt is timestamp;
+    }
+
+    function validSettings(s) {
+      return s.focusMinutes is int && s.focusMinutes >= 1 && s.focusMinutes <= 600
+        && s.shortBreakMinutes is int && s.shortBreakMinutes >= 0 && s.shortBreakMinutes <= 600
+        && s.longBreakMinutes is int && s.longBreakMinutes >= 0 && s.longBreakMinutes <= 600
+        && s.lapsPerLongBreak is int && s.lapsPerLongBreak >= 1 && s.lapsPerLongBreak <= 99
+        && s.soundsEnabled is bool
+        && (!('autoStart' in s) || s.autoStart is bool);
+    }
+
+    function validUserDoc() {
+      let d = request.resource.data;
+      return (!('profile' in d) || validProfile(d.profile))
+        && (!('settings' in d) || validSettings(d.settings));
+    }
+
+    match /users/{uid} {
+      // The single user doc holds the profile + settings maps.
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validUserDoc();
+      allow delete: if isOwner(uid);
+
+      match /stints/{stintId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validStint();
+        allow delete: if isOwner(uid);
+      }
+
+      match /laps/{lapId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validLap();
+        allow delete: if isOwner(uid);
+      }
+    }
+  }
+}

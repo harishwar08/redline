@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "484156668364",
+    "project_id": "redline-eca6e",
+    "storage_bucket": "redline-eca6e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:484156668364:android:03e45a01a23b2a32884569",
+        "android_client_info": {
+          "package_name": "com.redline.redline"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmQOY48Ef0g4rm25EATsv202a-qF88lNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
