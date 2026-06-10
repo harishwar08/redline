@@ -90,14 +90,14 @@ flutter:
     - assets/audio/new-car-slam.mp3
 
   fonts:
-    # SF Pro Display — the premium dark redesign (Pit Board / Stats / Driver).
+    # Inter — the premium dark redesign (Pit Board / Stats / Driver).
     # Only Regular(400) + Bold(700) upright: the ladder's display weight 600
     # maps to Bold (never 500). No italics anywhere in v2.
-    - family: SF Pro Display
+    - family: Inter
       fonts:
-        - asset: assets/fonts/SFProDisplay-Regular.otf
+        - asset: assets/fonts/Inter-Regular.ttf
           weight: 400
-        - asset: assets/fonts/SFProDisplay-Bold.otf
+        - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
 
   # ── REDLINE assets ──────────────────────────────────────────────────────

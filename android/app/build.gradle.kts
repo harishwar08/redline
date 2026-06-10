@@ -25,7 +25,7 @@ android {
         applicationId = "com.redline.redline"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion // Firebase requires API 23+
+        minSdk = 23 // Firebase requires API 23+
         targetSdk = 36 // Android 16
         versionCode = flutter.versionCode
         versionName = flutter.versionName

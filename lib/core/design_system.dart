@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 /// green/yellow/blue are small state accents. No italics. Kept separate from the
 /// vintage RColors/RText (Cluster) so this restyle stays contained.
 ///
-/// Font: SF Pro Display (bundled, offline-safe) — a clean grotesque matching the
+/// Font: Inter (bundled, offline-safe) — a clean grotesque matching the
 /// reference. Only Regular(400) + Bold(700) upright ship, so display weight 600
 /// renders as Bold; body/captions are Regular.
 abstract final class DS {
@@ -56,7 +56,7 @@ abstract final class DS {
 
   static const rInput = 14.0; // inputs / utility rows (alias of rTile)
 
-  static const fontFamily = 'SF Pro Display';
+  static const fontFamily = 'Inter';
 
   /// The card recipe — flat `card` fill, 22px radius, a soft diffuse drop-shadow
   /// so it lifts off the grain, and a faint hairline "lit" edge. [raised] uses

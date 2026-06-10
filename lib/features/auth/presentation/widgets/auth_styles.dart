@@ -20,7 +20,7 @@ abstract final class AuthStyle {
   static const enteredText = DS.textPrimary; // #FFFFFF
 
   static const accent = DS.accent; // #E10600
-  static const fontFamily = DS.fontFamily; // SF Pro Display
+  static const fontFamily = DS.fontFamily; // Inter
 
   // ── Type ──────────────────────────────────────────────────────────────
   static const heading = TextStyle(
