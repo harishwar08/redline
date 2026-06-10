@@ -47,15 +47,19 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     for (final c in [_name, _email, _password, _confirm]) {
       c.addListener(_onChanged);
     }
-    _bindBlur(_nameFocus, _validateName);
-    _bindBlur(_emailFocus, _validateEmail);
-    _bindBlur(_passwordFocus, _validatePassword);
-    _bindBlur(_confirmFocus, _validateConfirm);
+    _bindBlur(_nameFocus, _name, _validateName);
+    _bindBlur(_emailFocus, _email, _validateEmail);
+    _bindBlur(_passwordFocus, _password, _validatePassword);
+    _bindBlur(_confirmFocus, _confirm, _validateConfirm);
   }
 
-  void _bindBlur(FocusNode node, VoidCallback validate) {
+  void _bindBlur(FocusNode node, TextEditingController controller, VoidCallback validate) {
     node.addListener(() {
-      if (!node.hasFocus) validate();
+      // Validate on blur only once the field has content — never eagerly. So
+      // merely focusing then leaving an empty field (or tapping Continue with
+      // Google) won't surface "please enter…" errors; empty required fields are
+      // still caught when the Sign Up button is tapped.
+      if (!node.hasFocus && controller.text.trim().isNotEmpty) validate();
     });
   }
 
@@ -133,10 +137,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     final auth = ref.watch(authControllerProvider);
     final loading = auth.isLoading;
 
-    // Guest-first: no router redirect, so the screen returns to the app itself
-    // once the (stubbed) sign-up succeeds.
+    // On success, a new account goes to profile onboarding; otherwise straight
+    // into the app. (A sign-up is always new, but the check keeps it uniform.)
     ref.listen(authControllerProvider, (_, next) {
-      if (next.isAuthenticated) context.go('/');
+      if (next.isAuthenticated) {
+        context.go(next.isNewUser ? '/edit-profile?onboarding=1' : '/');
+      }
     });
 
     return AuthScaffold(

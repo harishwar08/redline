@@ -59,7 +59,7 @@ class NowDrivingPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  loaded ? taskName! : 'Load a task from the Pit Board.',
+                  loaded ? taskName! : 'Load a task from the Task Board.',
                   style: loaded
                       ? DSText.cardTitle
                       : DSText.body.copyWith(color: DS.textSecondary),

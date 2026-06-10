@@ -37,7 +37,7 @@ class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
   /// use-after-dispose race with the route's exit animation.
   Future<void> _openAddTask() async {
     if (!ref.read(isAuthenticatedProvider)) {
-      await showAuthGateDialog(context, onSignIn: () => context.go('/driver'));
+      await showAuthGateDialog(context, onSignIn: () => context.push('/sign-in'));
       return;
     }
     await showDialog<void>(

@@ -189,19 +189,22 @@ class ClusterScreen extends ConsumerWidget {
 
   void _flash(BuildContext context, TimerMode mode, Color accent) {
     final (label, color) = switch (mode) {
-      TimerMode.focus => ('LAP COMPLETE · STINT LOGGED', accent),
-      TimerMode.shortBreak => ('PIT STOP OVER · BACK TO WORK', RColors.brassHi),
+      TimerMode.focus => ('LAP COMPLETED', accent),
+      TimerMode.shortBreak => ('BREAK OVER · START THE RACE', RColors.brassHi),
       TimerMode.longBreak => ('REST OVER · NEXT STINT AWAITS', RColors.brassHi),
     };
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: RColors.dialBlack2,
+        // Design-system card recipe: #1A1A1A fill, ~22px radius, faint hairline
+        // edge + a soft shadow — no white/coloured outline.
+        backgroundColor: DS.card,
+        elevation: 8,
         duration: const Duration(seconds: 3),
         shape: RoundedRectangleBorder(
-          borderRadius: RRadii.rPlate,
-          side: BorderSide(color: color.withValues(alpha: 0.6)),
+          borderRadius: BorderRadius.circular(DS.rCard),
+          side: const BorderSide(color: DS.hairline),
         ),
         content: Row(
           children: [

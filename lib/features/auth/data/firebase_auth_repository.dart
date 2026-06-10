@@ -39,7 +39,11 @@ class FirebaseAuthRepository implements AuthRepository {
       u == null ? null : AppUser(uid: u.uid, isAnonymous: u.isAnonymous);
 
   @override
-  Stream<AppUser?> authStateChanges() => _auth.authStateChanges().map(_map);
+  Stream<AppUser?> authStateChanges() => _auth.userChanges().map(_map);
+  // userChanges (not authStateChanges) so an anonymous→account *link* — which
+  // keeps the same uid but flips isAnonymous and sets the profile — emits an
+  // event. authStateChanges only fires on sign-in/out, so after a sign-up link
+  // the gates + profile wouldn't refresh until an app restart.
 
   @override
   Future<AppUser> signInAnonymously() async {
@@ -48,7 +52,7 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signUpWithEmail({
+  Future<bool> signUpWithEmail({
     required String name,
     required String email,
     required String password,
@@ -75,10 +79,11 @@ class FirebaseAuthRepository implements AuthRepository {
       await user.updateDisplayName(name);
     } catch (_) {/* non-fatal — the Firestore profile is the source of truth */}
     await _profiles.writeSignUpProfile(uid: user.uid, name: name, email: email);
+    return true; // a sign-up is always a new account → profile onboarding
   }
 
   @override
-  Future<void> signInWithEmail({
+  Future<bool> signInWithEmail({
     required String email,
     required String password,
   }) async {
@@ -87,10 +92,11 @@ class FirebaseAuthRepository implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw _friendly(e);
     }
+    return false; // signing into an existing account → straight into the app
   }
 
   @override
-  Future<void> signInWithGoogle() async {
+  Future<bool> signInWithGoogle() async {
     await _ensureGoogleInitialized();
 
     final GoogleSignInAccount account;
@@ -108,21 +114,25 @@ class FirebaseAuthRepository implements AuthRepository {
 
     final current = _auth.currentUser;
     UserCredential result;
+    bool isNew;
     try {
       if (current != null && current.isAnonymous) {
         try {
-          // Link so the guest's uid + data carry over.
+          // Link so the guest's uid + data carry over → a brand-new account.
           result = await current.linkWithCredential(googleCred);
+          isNew = true;
         } on FirebaseAuthException catch (e) {
           if (e.code == 'credential-already-in-use' || e.code == 'email-already-in-use') {
             // This Google account already exists — sign into it (returning user).
             result = await _auth.signInWithCredential(googleCred);
+            isNew = false;
           } else {
             rethrow;
           }
         }
       } else {
         result = await _auth.signInWithCredential(googleCred);
+        isNew = result.additionalUserInfo?.isNewUser ?? false;
       }
     } on FirebaseAuthException catch (e) {
       throw _friendly(e);
@@ -135,6 +145,7 @@ class FirebaseAuthRepository implements AuthRepository {
       name: googleName.isEmpty ? 'Driver' : googleName,
       email: user.email,
     );
+    return isNew;
   }
 
   @override
@@ -171,6 +182,9 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   String? get currentUid => _auth.currentUser?.uid;
+
+  @override
+  String? get currentEmail => _auth.currentUser?.email;
 
   @override
   List<String> get currentProviderIds =>

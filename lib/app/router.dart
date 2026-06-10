@@ -11,6 +11,7 @@ import '../features/laplog/presentation/lap_log_screen.dart';
 import '../features/onboarding/presentation/licence_screen.dart';
 import '../features/onboarding/presentation/warm_up_screen.dart';
 import '../features/profile/presentation/driver_screen.dart';
+import '../features/profile/presentation/edit_profile_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/tasks/presentation/pit_board_screen.dart';
@@ -46,6 +47,14 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── Settings (pushed over the shell; back returns to Driver) ──────────
       GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
+
+      // ── Edit Profile — normal edit (pushed from the Driver tab) or the
+      //    post-sign-up onboarding step (?onboarding=1, Save → into the app).
+      GoRoute(
+        path: '/edit-profile',
+        builder: (_, s) =>
+            EditProfileScreen(isOnboarding: s.uri.queryParameters['onboarding'] == '1'),
+      ),
 
       // ── Legacy onboarding routes (kept reachable; no longer forced) ───────
       GoRoute(path: '/warmup', builder: (_, _) => const WarmUpScreen()),

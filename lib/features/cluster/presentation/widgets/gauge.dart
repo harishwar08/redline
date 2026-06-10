@@ -45,6 +45,11 @@ class _GaugeState extends State<Gauge> with TickerProviderStateMixin {
   late final AnimationController _rev;
   late final Animation<double> _revAnim;
   bool _revving = false;
+  // The accel sound rides the rev-up sweep but cuts at the 220 mark (≈92% of the
+  // sweep), not the full 240 — so it starts early and finishes just before the
+  // needle tops out. Guarded so it stops at most once per sweep.
+  bool _accelStopped = false;
+  static const _accelStopFraction = 220 / 240;
 
   final _needle = ValueNotifier<double>(1); // displayed fraction (arc + pointer)
   final _clock = ValueNotifier<String>('00:00');
@@ -56,20 +61,29 @@ class _GaugeState extends State<Gauge> with TickerProviderStateMixin {
     super.initState();
     _ticker = createTicker(_onTick);
     _color = AnimationController(vsync: this, duration: const Duration(milliseconds: 250), value: 1);
-    _rev = AnimationController(vsync: this, duration: const Duration(milliseconds: 2700));
+    _rev = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500));
     // Linear (constant-velocity) sweep 0 → full, so the needle moves at one
     // uniform speed the whole way with no slowdown near the top.
     _revAnim = Tween<double>(begin: 0.0, end: 1.0).animate(_rev);
     _rev.addStatusListener((s) {
       if (s == AnimationStatus.completed) {
         _revving = false;
-        widget.onRevEnd?.call(); // needle reached the end → fade the accel sound
+        _stopAccel(); // safety — normally already cut at the 220 mark
       }
     });
     _sync();
     // Seed the colour from the initial needle position (no crossfade yet).
     _colorTarget = _needle.value > 0.5 ? 1.0 : 0.0;
     _color.value = _colorTarget;
+  }
+
+  /// Stops the acceleration sound once per sweep — at the 220 mark mid-sweep,
+  /// at completion, or if the rev is cut short. Guarded so [onRevEnd] (the
+  /// sound's fade-out) fires at most once.
+  void _stopAccel() {
+    if (_accelStopped) return;
+    _accelStopped = true;
+    widget.onRevEnd?.call();
   }
 
   /// Whole-arc colour follows the needle position: blue ≤120 (≤0.5), amber
@@ -90,6 +104,7 @@ class _GaugeState extends State<Gauge> with TickerProviderStateMixin {
     if (freshStart && widget.remainingMs >= widget.totalMs - 1500 && !reduceMotion) {
       // Pressed Start on a full session → play the rev-up flourish.
       _revving = true;
+      _accelStopped = false;
       if (!_ticker.isActive) _ticker.start();
       _rev.forward(from: 0);
       widget.onRevStart?.call(); // accel sound starts the instant the needle moves
@@ -110,7 +125,7 @@ class _GaugeState extends State<Gauge> with TickerProviderStateMixin {
       if (_ticker.isActive) _ticker.stop();
       if (_revving) {
         _revving = false;
-        widget.onRevEnd?.call(); // rev cut short (e.g. paused) → fade the sound
+        _stopAccel(); // rev cut short (e.g. paused) → fade the sound
       }
       _rev.stop();
       final total = widget.totalMs <= 0 ? 1 : widget.totalMs;
@@ -132,6 +147,7 @@ class _GaugeState extends State<Gauge> with TickerProviderStateMixin {
     final ms = _liveMs;
     if (_revving) {
       _needle.value = _revAnim.value; // rev-up flourish drives the arc
+      if (_revAnim.value >= _accelStopFraction) _stopAccel(); // cut the sound at the 220 mark
     } else {
       final total = widget.totalMs <= 0 ? 1 : widget.totalMs;
       _needle.value = (ms / total).clamp(0.0, 1.0); // countdown depletes to 0

@@ -38,29 +38,36 @@ class FakeAuthRepository implements AuthRepository {
     return _current!;
   }
 
+  String? email;
+
   @override
-  Future<void> signUpWithEmail({
+  Future<bool> signUpWithEmail({
     required String name,
     required String email,
     required String password,
   }) async {
+    this.email = email;
     _current = AppUser(uid: 'user-${++_seq}', isAnonymous: false);
     _controller.add(_current);
+    return true; // a sign-up is always a new account
   }
 
   @override
-  Future<void> signInWithEmail({
+  Future<bool> signInWithEmail({
     required String email,
     required String password,
   }) async {
+    this.email = email;
     _current = AppUser(uid: 'user-${++_seq}', isAnonymous: false);
     _controller.add(_current);
+    return false; // returning user
   }
 
   @override
-  Future<void> signInWithGoogle() async {
+  Future<bool> signInWithGoogle() async {
     _current = AppUser(uid: 'google-${++_seq}', isAnonymous: false);
     _controller.add(_current);
+    return true; // model a new Google account by default
   }
 
   @override
@@ -89,6 +96,9 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   String? get currentUid => _current?.uid;
+
+  @override
+  String? get currentEmail => email;
 
   @override
   List<String> get currentProviderIds => providerIds;

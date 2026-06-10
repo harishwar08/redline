@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -38,7 +37,7 @@ class DriverScreen extends ConsumerWidget {
             if (authed)
               _credentialCard(context, ref, profile, photoPath)
             else
-              _GuestPrompt(onTap: () => context.push('/sign-up')),
+              _GuestPrompt(onTap: () => context.push('/sign-in')),
             const SizedBox(height: DS.s24),
 
             // ── Lifetime stats (zeros for guests) ────────────────────────
@@ -136,7 +135,7 @@ class DriverScreen extends ConsumerWidget {
                     children: [
                       _Meta(label: 'AGE', value: profile.age > 0 ? '${profile.age}' : '—'),
                       _Meta(label: 'SEX', value: sex),
-                      _Meta(label: 'CAR NO', value: '${profile.number}'),
+                      _Meta(label: 'CAR NO', value: profile.number > 0 ? '${profile.number}' : '—'),
                     ],
                   ),
                 ],
@@ -148,200 +147,15 @@ class DriverScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _editProfile(BuildContext context, WidgetRef ref) async {
-    final base = ref.read(profileProvider).dataOrNull ?? DriverProfile(createdAt: DateTime.now());
-    // The dialog OWNS its text controllers (created in initState, disposed in
-    // its dispose) so they're never used after disposal — unlike disposing them
-    // right after `await showDialog`, which races the dialog's exit animation.
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _EditProfileDialog(
-        base: base,
-        onSave: (updated) => ref.read(profileRepositoryProvider).upsertProfile(updated),
-      ),
-    );
-  }
-}
-
-/// The edit-credential dialog. Owns its [TextEditingController]s for a safe
-/// lifecycle (the cause of the earlier "controller used after disposed" crash).
-class _EditProfileDialog extends StatefulWidget {
-  const _EditProfileDialog({required this.base, required this.onSave});
-
-  final DriverProfile base;
-  final ValueChanged<DriverProfile> onSave;
-
-  @override
-  State<_EditProfileDialog> createState() => _EditProfileDialogState();
-}
-
-class _EditProfileDialogState extends State<_EditProfileDialog> {
-  late final TextEditingController _name;
-  late final TextEditingController _age;
-  late final TextEditingController _number;
-  late String _sex;
-
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.base.name);
-    _age = TextEditingController(text: widget.base.age > 0 ? '${widget.base.age}' : '');
-    _number = TextEditingController(text: '${widget.base.number}');
-    _sex = widget.base.sex;
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _age.dispose();
-    _number.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final base = widget.base;
-    widget.onSave(base.copyWith(
-      name: _name.text.trim().isEmpty ? base.name : _name.text.trim(),
-      age: int.tryParse(_age.text.trim()) ?? base.age,
-      number: int.tryParse(_number.text) ?? base.number,
-      sex: _sex,
-    ));
-    Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: DS.card,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(DS.rCard),
-        side: const BorderSide(color: DS.hairline),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s24, DS.s24, DS.s18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Edit Profile', style: DSText.cardTitle),
-            const SizedBox(height: DS.s24),
-            _field('Name', _name, keyboard: TextInputType.name),
-            const SizedBox(height: DS.s17),
-            // Sex — Male / Female selector.
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('SEX', style: DSText.metricLabel),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _SexChip(
-                        label: 'Male',
-                        selected: _sex == 'male',
-                        onTap: () => setState(() => _sex = 'male'),
-                      ),
-                    ),
-                    const SizedBox(width: DS.s12),
-                    Expanded(
-                      child: _SexChip(
-                        label: 'Female',
-                        selected: _sex == 'female',
-                        onTap: () => setState(() => _sex = 'female'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: DS.s17),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _field('Age', _age, digitsOnly: true)),
-                const SizedBox(width: DS.s17),
-                Expanded(child: _field('Car No', _number, digitsOnly: true)),
-              ],
-            ),
-            const SizedBox(height: DS.s24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    foregroundColor: DS.textSecondary,
-                    textStyle: const TextStyle(fontFamily: DS.fontFamily, fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: DS.s8),
-                GestureDetector(
-                  onTap: _save,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: DS.accent,
-                      borderRadius: BorderRadius.circular(DS.rInput),
-                    ),
-                    child: const Text('Save',
-                        style: TextStyle(
-                            fontFamily: DS.fontFamily, color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Design-system field — filled surface, hairline border, 14px radius, no
-  /// Material underline, neutral cursor.
-  Widget _field(
-    String label,
-    TextEditingController c, {
-    TextInputType? keyboard,
-    bool digitsOnly = false,
-  }) {
-    final formatters = <TextInputFormatter>[
-      if (digitsOnly) FilteringTextInputFormatter.digitsOnly,
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label.toUpperCase(), style: DSText.metricLabel),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: DS.surfaceInput,
-            borderRadius: BorderRadius.circular(DS.rInput),
-            border: Border.all(color: DS.hairline),
-          ),
-          child: TextField(
-            controller: c,
-            keyboardType: keyboard ?? (digitsOnly ? TextInputType.number : null),
-            inputFormatters: formatters.isEmpty ? null : formatters,
-            cursorColor: DS.textPrimary,
-            style: const TextStyle(
-                fontFamily: DS.fontFamily, color: DS.textPrimary, fontSize: 16, fontWeight: FontWeight.w400),
-            decoration: const InputDecoration(
-              isCollapsed: true,
-              contentPadding: EdgeInsets.symmetric(vertical: 14),
-              border: InputBorder.none,
-            ),
-          ),
-        ),
-      ],
-    );
+  void _editProfile(BuildContext context, WidgetRef ref) {
+    // The full Edit Profile screen (shared with the post-sign-up onboarding
+    // step). Pushed so Save → pop returns here to the Profile tab.
+    context.push('/edit-profile');
   }
 }
 
 /// The auth entry point shown to guests in place of the credential — a tappable
-/// card that opens the Sign Up screen (which links to Sign In).
+/// card that opens the Sign In screen by default (which links to Sign Up).
 class _GuestPrompt extends StatelessWidget {
   const _GuestPrompt({required this.onTap});
 
@@ -466,40 +280,6 @@ class _Avatar extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A selectable Male/Female chip for the edit form.
-class _SexChip extends StatelessWidget {
-  const _SexChip({required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 46,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? DS.accent : DS.surfaceInput,
-          borderRadius: BorderRadius.circular(DS.rInput),
-          border: Border.all(color: selected ? DS.accent : DS.hairline),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: DS.fontFamily,
-            color: selected ? Colors.white : DS.textSecondary,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
         ),
       ),
     );

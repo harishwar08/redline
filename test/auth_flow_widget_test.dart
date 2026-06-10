@@ -25,6 +25,8 @@ void main() {
         GoRoute(path: '/sign-up', builder: (_, _) => const SignUpScreen()),
         GoRoute(path: '/sign-in', builder: (_, _) => const Scaffold(body: Text('SIGN IN STUB'))),
         GoRoute(path: '/', builder: (_, _) => const Scaffold(body: Text('APP HOME STUB'))),
+        // A new sign-up routes to profile onboarding (Edit Profile), not the app.
+        GoRoute(path: '/edit-profile', builder: (_, _) => const Scaffold(body: Text('ONBOARDING STUB'))),
       ],
     );
     await tester.pumpWidget(
@@ -70,12 +72,12 @@ void main() {
     await tester.pump();
     expect(cta().onPressed, isNotNull);
 
-    // Submit → loading → authenticated → the screen navigates to '/'.
+    // Submit → loading → authenticated (new account) → profile onboarding.
     await tester.ensureVisible(find.byType(PrimaryButton));
     await tester.tap(find.byType(PrimaryButton));
     await tester.pump(); // loading
     await tester.pumpAndSettle();
 
-    expect(find.text('APP HOME STUB'), findsOneWidget);
+    expect(find.text('ONBOARDING STUB'), findsOneWidget);
   });
 }

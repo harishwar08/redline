@@ -24,6 +24,13 @@ final uidProvider = Provider<String?>((ref) {
   return state.hasValue ? state.value?.uid : null;
 });
 
+/// The signed-in user's email (or null for anonymous guests / signed out). For
+/// display/pre-fill on the profile screen. Recomputes on auth changes.
+final currentEmailProvider = Provider<String?>((ref) {
+  ref.watch(authStateProvider);
+  return ref.watch(authRepositoryProvider).currentEmail;
+});
+
 /// Anonymous-first bootstrap: resolves once a user is guaranteed to exist.
 ///
 /// It waits for the first auth emission first (Firebase restores any persisted

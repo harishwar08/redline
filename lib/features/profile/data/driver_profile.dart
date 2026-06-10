@@ -15,7 +15,7 @@ class DriverProfile {
     this.name = 'Privateer',
     this.team = 'Scuderia Privata',
     this.country = 'ITA',
-    this.number = 27,
+    this.number = 0, // 0 = unset (no car number yet); the UI shows it as blank/—
     this.liveryColor = '#E10600',
     this.phone = '',
     this.age = 0,
@@ -58,7 +58,7 @@ class DriverProfile {
         name: d['name'] as String? ?? 'Privateer',
         team: d['team'] as String? ?? 'Scuderia Privata',
         country: d['country'] as String? ?? 'ITA',
-        number: (d['number'] as num?)?.toInt() ?? 27,
+        number: (d['number'] as num?)?.toInt() ?? 0,
         liveryColor: d['liveryColor'] as String? ?? '#E10600',
         phone: d['phone'] as String? ?? '',
         age: (d['age'] as num?)?.toInt() ?? 0,

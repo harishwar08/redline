@@ -39,11 +39,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     });
     _id.addListener(_onChanged);
     _password.addListener(_onChanged);
+    // Validate on blur only once a field has content — never eagerly, so merely
+    // focusing then leaving an empty field (or tapping Continue with Google)
+    // won't surface errors; empty fields are still caught on Sign In.
     _idFocus.addListener(() {
-      if (!_idFocus.hasFocus) _validateId();
+      if (!_idFocus.hasFocus && _id.text.isNotEmpty) _validateId();
     });
     _passwordFocus.addListener(() {
-      if (!_passwordFocus.hasFocus) _validatePassword();
+      if (!_passwordFocus.hasFocus && _password.text.isNotEmpty) _validatePassword();
     });
   }
 
@@ -100,10 +103,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final auth = ref.watch(authControllerProvider);
     final loading = auth.isLoading;
 
-    // Guest-first: no router redirect, so the screen returns to the app itself
-    // once the (stubbed) sign-in succeeds.
+    // A returning sign-in goes straight into the app; a new account (first-time
+    // Google sign-in) goes to profile onboarding.
     ref.listen(authControllerProvider, (_, next) {
-      if (next.isAuthenticated) context.go('/');
+      if (next.isAuthenticated) {
+        context.go(next.isNewUser ? '/edit-profile?onboarding=1' : '/');
+      }
     });
 
     return AuthScaffold(

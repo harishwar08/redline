@@ -4,9 +4,8 @@ import '../../../../core/design_system.dart';
 import 'auth_buttons.dart';
 
 /// The create-gate shown when a **guest** tries to create a task on the Pit
-/// Board. Design-system styled. The primary "Sign In" action funnels to the
-/// Driver screen (the auth entry point) via [onSignIn]; a secondary "Not now"
-/// just dismisses.
+/// Board. Design-system styled. The primary "Sign In" action opens the Sign In
+/// screen via [onSignIn]; a secondary "Not now" just dismisses.
 Future<void> showAuthGateDialog(
   BuildContext context, {
   required VoidCallback onSignIn,

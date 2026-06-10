@@ -21,6 +21,10 @@ class AccelSound {
     try {
       _player = AudioPlayer();
       await _player!.setReleaseMode(ReleaseMode.stop);
+      // Low-latency path (Android SoundPool) so the sweep sound starts the
+      // instant the needle moves — the default MediaPlayer mode has a noticeable
+      // start delay. Volume control (for the fade-out) still works in this mode.
+      await _player!.setPlayerMode(PlayerMode.lowLatency);
       await _player!.setSource(AssetSource(_asset)); // preload into memory
       _ready = true;
     } catch (e) {

@@ -16,18 +16,24 @@ enum AuthStatus { unknown, unauthenticated, loading, authenticated, error }
 /// Immutable auth state surfaced to the UI and the router gate.
 @immutable
 class AuthState {
-  const AuthState._(this.status, [this.message]);
+  const AuthState._(this.status, {this.message, this.isNewUser = false});
 
   const AuthState.unknown() : this._(AuthStatus.unknown);
   const AuthState.unauthenticated() : this._(AuthStatus.unauthenticated);
   const AuthState.loading() : this._(AuthStatus.loading);
-  const AuthState.authenticated() : this._(AuthStatus.authenticated);
-  const AuthState.error(String message) : this._(AuthStatus.error, message);
+  const AuthState.authenticated({bool isNewUser = false})
+      : this._(AuthStatus.authenticated, isNewUser: isNewUser);
+  const AuthState.error(String message) : this._(AuthStatus.error, message: message);
 
   final AuthStatus status;
 
   /// Present only when [status] is [AuthStatus.error] — the message to surface.
   final String? message;
+
+  /// True only on an [authenticated] state that just came from creating a **new**
+  /// account (email sign-up / first Google sign-in) — the cue to route into
+  /// profile onboarding. False for returning sign-ins.
+  final bool isNewUser;
 
   bool get isUnknown => status == AuthStatus.unknown;
   bool get isLoading => status == AuthStatus.loading;
@@ -36,13 +42,17 @@ class AuthState {
 
   @override
   bool operator ==(Object other) =>
-      other is AuthState && other.status == status && other.message == message;
+      other is AuthState &&
+      other.status == status &&
+      other.message == message &&
+      other.isNewUser == isNewUser;
 
   @override
-  int get hashCode => Object.hash(status, message);
+  int get hashCode => Object.hash(status, message, isNewUser);
 
   @override
-  String toString() => 'AuthState($status${message == null ? '' : ', "$message"'})';
+  String toString() =>
+      'AuthState($status${message == null ? '' : ', "$message"'}${isNewUser ? ', new' : ''})';
 }
 
 /// Account auth controller — the command surface the auth screens drive.
@@ -139,12 +149,13 @@ class AuthController extends Notifier<AuthState> {
   // ── Internals ─────────────────────────────────────────────────────────────
 
   /// Runs [body] inside the loading → authenticated/error lifecycle, surfacing
-  /// the repository's friendly [AuthException] message on failure.
-  Future<void> _run(Future<void> Function() body) async {
+  /// the repository's friendly [AuthException] message on failure. [body] returns
+  /// whether the account is **new** (→ onboarding) vs returning.
+  Future<void> _run(Future<bool> Function() body) async {
     _set(const AuthState.loading());
     try {
-      await body();
-      _set(const AuthState.authenticated());
+      final isNewUser = await body();
+      _set(AuthState.authenticated(isNewUser: isNewUser));
     } on AuthException catch (e) {
       _set(AuthState.error(e.message));
     } catch (_) {

@@ -51,8 +51,8 @@ class NotificationService {
     if (!_ready || !granted) return;
 
     final (title, body) = switch (mode) {
-      TimerMode.focus => ('LAP COMPLETE', "Stint logged. Catch your breath."),
-      TimerMode.shortBreak => ('PIT STOP OVER', "Back on track — fire the engine."),
+      TimerMode.focus => ('Lap Completed', 'Take a break now.'),
+      TimerMode.shortBreak => ('Break Over', "Break's over — start the race."),
       TimerMode.longBreak => ('REST OVER', "You've earned it. Next stint awaits."),
     };
 

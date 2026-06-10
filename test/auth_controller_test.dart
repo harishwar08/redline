@@ -41,6 +41,7 @@ void main() {
         );
 
     expect(c.read(authControllerProvider).status, AuthStatus.authenticated);
+    expect(c.read(authControllerProvider).isNewUser, isFalse, reason: 'returning sign-in');
   });
 
   test('signInWithEmail maps the repo AuthException to error(message)', () async {
@@ -70,6 +71,7 @@ void main() {
 
     expect(repo.signedUp, isTrue);
     expect(c.read(authControllerProvider).status, AuthStatus.authenticated);
+    expect(c.read(authControllerProvider).isNewUser, isTrue, reason: 'sign-up → onboarding');
   });
 
   test('signUpWithEmail surfaces "That email is already in use."', () async {
@@ -146,26 +148,29 @@ class _FakeRepo implements AuthRepository {
   String? resetEmail;
 
   @override
-  Future<void> signUpWithEmail({
+  Future<bool> signUpWithEmail({
     required String name,
     required String email,
     required String password,
   }) async {
     if (error != null) throw error!;
     signedUp = true;
+    return true;
   }
 
   @override
-  Future<void> signInWithEmail({
+  Future<bool> signInWithEmail({
     required String email,
     required String password,
   }) async {
     if (error != null) throw error!;
+    return false;
   }
 
   @override
-  Future<void> signInWithGoogle() async {
+  Future<bool> signInWithGoogle() async {
     if (error != null) throw error!;
+    return true;
   }
 
   @override
@@ -195,6 +200,8 @@ class _FakeRepo implements AuthRepository {
   Future<void> deleteAccount() async {}
   @override
   String? get currentUid => null;
+  @override
+  String? get currentEmail => null;
   @override
   List<String> get currentProviderIds => const [];
   @override

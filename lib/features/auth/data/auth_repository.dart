@@ -14,16 +14,18 @@ abstract interface class AuthRepository {
   /// the guest is **linked** so its uid/data carry over; otherwise a fresh
   /// account is created. Writes the user's profile doc on success. Throws
   /// [AuthException] (e.g. "That email is already in use.") on failure — it never
-  /// silently signs into a different account.
-  Future<void> signUpWithEmail({
+  /// silently signs into a different account. Returns true (always a new account)
+  /// so the caller can route a new user into profile onboarding.
+  Future<bool> signUpWithEmail({
     required String name,
     required String email,
     required String password,
   });
 
   /// Sign in a returning user with email + password. Throws [AuthException]
-  /// ("Incorrect email or password." etc.) on failure.
-  Future<void> signInWithEmail({
+  /// ("Incorrect email or password." etc.) on failure. Returns false (always a
+  /// returning user — they go straight into the app, never onboarding).
+  Future<bool> signInWithEmail({
     required String email,
     required String password,
   });
@@ -31,8 +33,10 @@ abstract interface class AuthRepository {
   /// Sign in with Google. Links an anonymous guest where possible (carrying its
   /// data over), falling back to a plain sign-in if that Google account already
   /// exists. Upserts the profile doc for a first-time Google user. Throws
-  /// [AuthException] on failure or cancellation.
-  Future<void> signInWithGoogle();
+  /// [AuthException] on failure or cancellation. Returns true when this is a
+  /// **new** account (anonymous→link, or `additionalUserInfo.isNewUser`), false
+  /// when signing into an existing Google account.
+  Future<bool> signInWithGoogle();
 
   /// Send a password-reset email. Throws [AuthException] on failure.
   Future<void> sendPasswordReset({required String email});
@@ -54,6 +58,10 @@ abstract interface class AuthRepository {
 
   /// The current uid synchronously, or null if signed out.
   String? get currentUid;
+
+  /// The current user's email, or null (anonymous guests have none). Used to
+  /// pre-fill / display the account email on the profile screen.
+  String? get currentEmail;
 
   /// The current user's sign-in provider ids (e.g. `'password'`, `'google.com'`),
   /// or empty when signed out. Used to pick the right re-authentication method
