@@ -31,8 +31,10 @@ final stintsProvider = StreamProvider<List<Stint>>((ref) {
 });
 
 extension StintListX on List<Stint> {
+  /// Open stints, **newest first** — a freshly added stint (highest `order`)
+  /// sorts to the top of the Pit Board.
   List<Stint> get open =>
-      where((s) => !s.isDone).toList()..sort((a, b) => a.order.compareTo(b.order));
+      where((s) => !s.isDone).toList()..sort((a, b) => b.order.compareTo(a.order));
   List<Stint> get done => where((s) => s.isDone).toList();
 }
 

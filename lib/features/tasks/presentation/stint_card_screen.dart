@@ -5,20 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/async_x.dart';
+import '../../../core/design_system.dart';
 import '../../../core/format.dart';
-import '../../../core/tokens.dart';
-import '../../../core/typography.dart';
-import '../../../shared/widgets/buttons.dart';
-import '../../../shared/widgets/controls.dart';
-import '../../../shared/widgets/indicators.dart';
-import '../../../shared/widgets/panels.dart';
-import '../../../shared/widgets/screen_fx.dart';
-import '../../garage/data/livery_controller.dart';
 import '../application/stint_providers.dart';
 import '../data/stint.dart';
 
 /// Stint Card — task detail: rename, lap target, pit notes, and loading the
-/// stint into the Cluster.
+/// stint into the Cluster. Design-system layout (grain + glow, card recipe,
+/// accent-red used sparingly).
 class StintCardScreen extends ConsumerStatefulWidget {
   const StintCardScreen({super.key, required this.taskId});
 
@@ -90,7 +84,6 @@ class _StintCardScreenState extends ConsumerState<StintCardScreen> {
   Widget build(BuildContext context) {
     final stints = ref.watch(stintsProvider).dataOrNull ?? const <Stint>[];
     final activeId = ref.watch(activeStintIdProvider);
-    final accent = ref.watch(accentProvider);
 
     final stint = _findById(stints, widget.taskId);
     _current = stint;
@@ -98,122 +91,398 @@ class _StintCardScreenState extends ConsumerState<StintCardScreen> {
     if (stint == null) {
       // Deleted while open — bail out gracefully.
       return Scaffold(
-        appBar: AppBar(title: const Text('STINT CARD')),
-        body: const ScreenFx(child: Center(child: Text('Stint removed.'))),
+        backgroundColor: DS.bgBase,
+        body: DsBackground(
+          child: SafeArea(
+            child: Column(
+              children: [
+                _Header(onBack: () => context.pop(), onDelete: null),
+                const Expanded(
+                  child: Center(child: Text('Stint removed.', style: DSText.body)),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
     final isActive = activeId == stint.id;
+    final loaded = isActive && !stint.isDone;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('STINT CARD'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: RColors.parchment),
-            onPressed: () {
-              _actions.delete(stint.id);
-              context.pop();
-            },
-          ),
-        ],
-      ),
-      body: ScreenFx(
-        child: ListView(
-          padding: const EdgeInsets.all(RSpace.l),
-          children: [
-            Text('LAP ${stint.completedLaps.toString().padLeft(2, '0')} OF '
-                '${stint.targetLaps.toString().padLeft(2, '0')}'
-                '${isActive ? ' · ACTIVE' : ''}',
-                style: RText.plateLabel(color: isActive ? accent : RColors.brassHi)),
-            const SizedBox(height: RSpace.s),
-            TextField(
-              controller: _name,
-              onChanged: _onNameChanged,
-              style: RText.h2(),
-              cursorColor: accent,
-              decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-            ),
-            const SizedBox(height: RSpace.m),
-            FuelGaugeProgress(value: stint.progress, color: accent == RColors.oxblood ? RColors.brassHi : accent),
-            const SizedBox(height: RSpace.xl),
-
-            Text('LAP TARGET', style: RText.label()),
-            const SizedBox(height: RSpace.s),
-            Center(
-              child: KnurledStepper(
-                value: stint.targetLaps,
-                min: 1,
-                max: 20,
-                onChanged: (v) => _actions.setTargetLaps(stint, v),
+      backgroundColor: DS.bgBase,
+      body: DsBackground(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Header(
+                onBack: () => context.pop(),
+                onDelete: () {
+                  _actions.delete(stint.id);
+                  context.pop();
+                },
               ),
-            ),
-            const SizedBox(height: RSpace.xl),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(DS.s17, DS.s8, DS.s17, DS.s24),
+                  children: [
+                    const SizedBox(height: DS.s4),
+                    // Title — white heading (editable). Wraps onto up to 3 lines
+                    // instead of scrolling horizontally; the rest shifts down.
+                    TextField(
+                      controller: _name,
+                      onChanged: _onNameChanged,
+                      cursorColor: DS.textSecondary,
+                      maxLines: 3,
+                      minLines: 1,
+                      keyboardType: TextInputType.multiline,
+                      style: const TextStyle(
+                        fontFamily: DS.fontFamily,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                        height: 1.2,
+                        color: DS.textPrimary,
+                      ),
+                      decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                    ),
+                    const SizedBox(height: DS.s17),
 
-            Text('PIT NOTES', style: RText.label()),
-            const SizedBox(height: RSpace.s),
-            BakelitePanel(
-              rim: PanelRim.none,
-              child: TextField(
-                controller: _notes,
-                onChanged: _onNotesChanged,
-                maxLines: 5,
-                minLines: 3,
-                style: RText.body(color: RColors.ivory),
-                cursorColor: accent,
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  hintText: 'Open with the movement, then the timeline. Keep it to one page…',
-                  hintStyle: RText.body(color: RColors.parchment.withValues(alpha: 0.5)),
+                    // Progress — slim rounded track + accent fill.
+                    _ProgressBar(value: stint.progress),
+                    const SizedBox(height: DS.s24),
+
+                    // Lap Target card.
+                    _Card(
+                      child: Column(
+                        children: [
+                          const Text('LAP TARGET', style: DSText.sectionLabel),
+                          const SizedBox(height: DS.s17),
+                          _LapStepper(
+                            value: stint.targetLaps,
+                            onDecrement: stint.targetLaps > 1
+                                ? () => _actions.setTargetLaps(stint, stint.targetLaps - 1)
+                                : null,
+                            onIncrement: stint.targetLaps < 20
+                                ? () => _actions.setTargetLaps(stint, stint.targetLaps + 1)
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: DS.s17),
+
+                    // Task Notes card.
+                    _Card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Task Notes', style: DSText.sectionLabel),
+                          const SizedBox(height: DS.s12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: DS.s12, vertical: DS.s8),
+                            decoration: BoxDecoration(
+                              color: DS.surfaceInput,
+                              borderRadius: BorderRadius.circular(DS.rInput),
+                              border: Border.all(color: DS.hairline),
+                            ),
+                            child: TextField(
+                              controller: _notes,
+                              onChanged: _onNotesChanged,
+                              maxLines: 5,
+                              minLines: 4,
+                              cursorColor: DS.accent,
+                              style: DSText.body,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                hintText: 'Add notes for this task…',
+                                hintStyle: TextStyle(
+                                  fontFamily: DS.fontFamily,
+                                  color: DS.textTertiary,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: DS.s24),
+
+                    // Action(s).
+                    if (stint.isDone)
+                      _OutlinedActionButton(label: 'Reopen Stint', onTap: () => _actions.toggleDone(stint))
+                    else if (loaded)
+                      _OutlinedActionButton(label: 'Unload', onTap: _actions.unload)
+                    else
+                      _PrimaryActionButton(
+                        label: 'Load into Drive',
+                        trailing: Icons.arrow_forward,
+                        onTap: () {
+                          _actions.load(stint.id);
+                          context.go('/');
+                        },
+                      ),
+                    const SizedBox(height: DS.s24),
+
+                    // Footer.
+                    Center(
+                      child: Text(
+                        'Created ${formatCardDate(stint.createdAt)} · '
+                        '${stint.completedLaps} Lap${stint.completedLaps == 1 ? '' : 's'} Run',
+                        style: DSText.metricLabel.copyWith(color: DS.textTertiary, fontWeight: FontWeight.w400),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.onBack, required this.onDelete});
+
+  final VoidCallback onBack;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s8, DS.s8),
+      child: Row(
+        children: [
+          _HeaderIcon(icon: Icons.arrow_back, semantic: 'Back', onTap: onBack),
+          const Expanded(
+            child: Center(
+              child: Text(
+                'Task Card',
+                style: TextStyle(
+                  fontFamily: DS.fontFamily,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  color: DS.textPrimary,
                 ),
               ),
             ),
-            const SizedBox(height: RSpace.xl),
+          ),
+          if (onDelete != null)
+            _HeaderIcon(icon: Icons.delete_outline, semantic: 'Delete stint', onTap: onDelete!)
+          else
+            const SizedBox(width: 44),
+        ],
+      ),
+    );
+  }
+}
 
-            if (stint.isDone)
-              PlateButton(
-                label: 'Reopen Stint',
-                filled: false,
-                onPressed: () => _actions.toggleDone(stint),
-              )
-            else if (isActive)
-              Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      TellTaleLamp(color: accent, lit: true),
-                      const SizedBox(width: RSpace.s),
-                      Text('LOADED IN THE CLUSTER', style: RText.label(color: accent)),
-                    ],
-                  ),
-                  const SizedBox(height: RSpace.m),
-                  PlateButton(
-                    label: 'Unload',
-                    filled: false,
-                    onPressed: _actions.unload,
-                  ),
-                ],
-              )
-            else
-              PlateButton(
-                label: 'Load into Cluster',
-                accent: accent,
-                trailing: Icons.arrow_forward,
-                onPressed: () {
-                  _actions.load(stint.id);
-                  context.go('/');
-                },
+class _HeaderIcon extends StatelessWidget {
+  const _HeaderIcon({required this.icon, required this.onTap, required this.semantic});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String semantic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semantic,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, color: DS.textSecondary, size: 24),
+        ),
+      ),
+    );
+  }
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(DS.s18),
+      decoration: DS.cardDecoration(),
+      child: child,
+    );
+  }
+}
+
+/// Slim rounded progress track (surface) + accent-red fill, 0..1.
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({required this.value});
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value.clamp(0.0, 1.0);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        height: 8,
+        color: DS.cardRaised,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: v == 0 ? 0.0 : v,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                color: DS.accent,
+                borderRadius: BorderRadius.all(Radius.circular(999)),
               ),
-            const SizedBox(height: RSpace.s),
-            Center(
-              child: Text('CREATED ${formatCardDate(stint.createdAt)}'
-                  ' · ${stint.completedLaps} LAPS RUN',
-                  style: RText.plateLabel(color: RColors.parchment.withValues(alpha: 0.6))),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centred − / chip / + lap-target stepper: circular buttons, value in a chip.
+class _LapStepper extends StatelessWidget {
+  const _LapStepper({required this.value, this.onIncrement, this.onDecrement});
+
+  final int value;
+  final VoidCallback? onIncrement;
+  final VoidCallback? onDecrement;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _RoundButton(icon: Icons.remove, semantic: 'Decrease lap target', onTap: onDecrement),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: DS.s18),
+          padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
+          decoration: BoxDecoration(
+            color: DS.surfaceInput,
+            borderRadius: BorderRadius.circular(DS.rInput),
+            border: Border.all(color: DS.hairline),
+          ),
+          child: Text(
+            value.toString().padLeft(2, '0'),
+            style: const TextStyle(
+              fontFamily: DS.fontFamily,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: DS.textPrimary,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        _RoundButton(icon: Icons.add, semantic: 'Increase lap target', onTap: onIncrement),
+      ],
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({required this.icon, required this.onTap, required this.semantic});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String semantic;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      label: semantic,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: DS.cardRaised,
+            shape: BoxShape.circle,
+            border: Border.all(color: DS.hairline),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? DS.textPrimary : DS.textTertiary.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Filled accent CTA (Load into Cluster).
+class _PrimaryActionButton extends StatelessWidget {
+  const _PrimaryActionButton({required this.label, required this.onTap, this.trailing});
+
+  final String label;
+  final VoidCallback onTap;
+  final IconData? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: DS.accent,
+          borderRadius: BorderRadius.circular(DS.rInput),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontFamily: DS.fontFamily, color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+            if (trailing != null) ...[
+              const SizedBox(width: DS.s8),
+              Icon(trailing, color: Colors.white, size: 20),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Outlined/secondary CTA (Unload / Reopen).
+class _OutlinedActionButton extends StatelessWidget {
+  const _OutlinedActionButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(DS.rInput),
+          border: Border.all(color: DS.hairline),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+                fontFamily: DS.fontFamily, color: DS.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
       ),
     );
   }

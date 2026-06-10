@@ -26,11 +26,12 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
+  // Display labels only — the routes/identifiers are unchanged.
   static const _tabs = <MetalTab>[
-    MetalTab(icon: Icons.speed_rounded, label: 'Cluster'),
-    MetalTab(icon: Icons.assignment_rounded, label: 'Pit Board'),
-    MetalTab(icon: Icons.bar_chart_rounded, label: 'Lap Log'),
-    MetalTab(icon: Icons.person_rounded, label: 'Driver'),
+    MetalTab(icon: Icons.speed_rounded, label: 'Drive'),
+    MetalTab(icon: Icons.assignment_rounded, label: 'Tasks'),
+    MetalTab(icon: Icons.bar_chart_rounded, label: 'Stats'),
+    MetalTab(icon: Icons.person_rounded, label: 'Profile'),
   ];
 
   @override

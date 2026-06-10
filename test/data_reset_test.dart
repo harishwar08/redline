@@ -39,8 +39,12 @@ void main() {
     addTearDown(sub.close);
     await ready.future.timeout(const Duration(seconds: 2));
 
+    // Capture the uid-keyed repos up front — after reset the account is
+    // deleted and a fresh anonymous one is minted, so these keep pointing at
+    // the original (now-emptied) user space.
     final stintRepo = c.read(stintRepositoryProvider);
     final lapRepo = c.read(lapRepositoryProvider);
+    final profileRepo = c.read(profileRepositoryProvider);
 
     // Seed cloud + local data.
     await stintRepo.addStint('Alpha');
@@ -54,21 +58,22 @@ void main() {
       type: LapType.focus,
       dateKey: '2026-06-07',
     ));
-    await c.read(profileRepositoryProvider).upsertProfile(
-          DriverProfile(createdAt: DateTime(2026), name: 'Senna'),
-        );
+    await profileRepo.upsertProfile(
+      DriverProfile(createdAt: DateTime(2026), name: 'Senna'),
+    );
     await prefs.setBool(PrefKeys.onboarded, true);
 
     expect((await stintRepo.watchStints().first).length, 2);
     expect((await lapRepo.watchAllLaps().first).length, 1);
-    expect(await c.read(profileRepositoryProvider).watchProfile().first, isNotNull);
+    expect(await profileRepo.watchProfile().first, isNotNull);
 
-    // Reset.
+    // Reset (deletes cloud data + account, clears prefs, mints a fresh account).
     await c.read(dataResetProvider).run();
 
     expect(await stintRepo.watchStints().first, isEmpty);
     expect(await lapRepo.watchAllLaps().first, isEmpty);
-    expect(await c.read(profileRepositoryProvider).watchProfile().first, isNull);
+    expect(await profileRepo.watchProfile().first, isNull);
     expect(prefs.getBool(PrefKeys.onboarded), isNull); // local prefs wiped
+    expect(auth.signInCount, 1); // a fresh anonymous account was minted
   });
 }

@@ -17,6 +17,9 @@ class DriverProfile {
     this.country = 'ITA',
     this.number = 27,
     this.liveryColor = '#E10600',
+    this.phone = '',
+    this.age = 0,
+    this.sex = '',
   });
 
   final String name;
@@ -24,6 +27,9 @@ class DriverProfile {
   final String country;
   final int number;
   final String liveryColor; // hex, e.g. '#E10600'
+  final String phone; // optional; '' = unset (retained; not shown in UI)
+  final int age; // optional; 0 = unset
+  final String sex; // optional; '' = unset, else 'male' / 'female'
   final DateTime createdAt;
 
   DriverProfile copyWith({
@@ -32,6 +38,9 @@ class DriverProfile {
     String? country,
     int? number,
     String? liveryColor,
+    String? phone,
+    int? age,
+    String? sex,
   }) =>
       DriverProfile(
         name: name ?? this.name,
@@ -39,6 +48,9 @@ class DriverProfile {
         country: country ?? this.country,
         number: number ?? this.number,
         liveryColor: liveryColor ?? this.liveryColor,
+        phone: phone ?? this.phone,
+        age: age ?? this.age,
+        sex: sex ?? this.sex,
         createdAt: createdAt,
       );
 
@@ -48,6 +60,9 @@ class DriverProfile {
         country: d['country'] as String? ?? 'ITA',
         number: (d['number'] as num?)?.toInt() ?? 27,
         liveryColor: d['liveryColor'] as String? ?? '#E10600',
+        phone: d['phone'] as String? ?? '',
+        age: (d['age'] as num?)?.toInt() ?? 0,
+        sex: d['sex'] as String? ?? '',
         createdAt: dateFrom(d['createdAt']),
       );
 
@@ -58,6 +73,9 @@ class DriverProfile {
         'country': country,
         'number': number,
         'liveryColor': liveryColor,
+        'phone': phone,
+        'age': age,
+        'sex': sex,
         'createdAt': Timestamp.fromDate(createdAt),
       };
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/async_x.dart';
 import '../../../core/design_system.dart';
 import '../../../core/format.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../auth/presentation/widgets/auth_gate_dialog.dart';
 import '../application/stint_providers.dart';
 import '../data/stint.dart';
 
@@ -17,11 +21,25 @@ class PitBoardScreen extends ConsumerStatefulWidget {
 }
 
 class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
-  /// Opens the ADD TASK modal. Creating a task mutates the same provider the
-  /// list watches, so the new row appears immediately. The dialog owns its own
-  /// text controller (disposed with the dialog), avoiding a use-after-dispose
-  /// race with the route's exit animation.
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Opens the ADD TASK modal — but only for a signed-in user. Guests get the
+  /// auth gate instead (no task is created). Creating a task mutates the same
+  /// provider the list watches, so the new row appears immediately. The dialog
+  /// owns its own text controller (disposed with the dialog), avoiding a
+  /// use-after-dispose race with the route's exit animation.
   Future<void> _openAddTask() async {
+    if (!ref.read(isAuthenticatedProvider)) {
+      await showAuthGateDialog(context, onSignIn: () => context.go('/driver'));
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (_) => _AddTaskDialog(
@@ -37,6 +55,14 @@ class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
     final open = stints.open;
     final done = stints.done;
 
+    // Live, case-insensitive title filter. Clearing the field restores all.
+    final q = _query.trim().toLowerCase();
+    bool matches(Stint s) => q.isEmpty || s.title.toLowerCase().contains(q);
+    final shownOpen = open.where(matches).toList();
+    final shownDone = done.where(matches).toList();
+    final hasAny = open.isNotEmpty || done.isNotEmpty;
+    final noMatches = q.isNotEmpty && shownOpen.isEmpty && shownDone.isEmpty;
+
     return DsBackground(
       child: SafeArea(
         child: Padding(
@@ -47,7 +73,7 @@ class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('PIT BOARD', style: DSText.screenTitle),
+                  Text('Task Board', style: DSText.screenTitle),
                   const SizedBox(width: 8),
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -60,26 +86,34 @@ class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
                 ],
               ),
               const SizedBox(height: DS.s4),
-              Text("TODAY'S GRID · ${open.length} STINT${open.length == 1 ? '' : 'S'}", style: DSText.sectionLabel),
+              Text('${open.length} task${open.length == 1 ? '' : 's'}', style: DSText.sectionLabel),
               const SizedBox(height: DS.s24),
-              _AddRow(onAdd: _openAddTask),
+              _SearchRow(
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _query = v),
+                onAdd: _openAddTask,
+              ),
               const SizedBox(height: DS.s24),
               Expanded(
-                child: open.isEmpty && done.isEmpty
+                child: !hasAny
                     ? const _EmptyGrid()
-                    : ListView(
-                        padding: const EdgeInsets.only(top: 2),
-                        children: [
-                          for (final s in open) _TaskTile(stint: s, active: s.id == activeId),
-                          if (done.isNotEmpty) ...[
-                            const SizedBox(height: DS.s12),
-                            Text('CHEQUERED · ${done.length} FINISHED', style: DSText.sectionLabel),
-                            const SizedBox(height: DS.s12),
-                            for (final s in done) _TaskTile(stint: s, active: false),
-                          ],
-                          const SizedBox(height: 40),
-                        ],
-                      ),
+                    : noMatches
+                        ? const _NoMatch()
+                        : ListView(
+                            padding: const EdgeInsets.only(top: 2),
+                            children: [
+                              for (final s in shownOpen)
+                                _TaskTile(key: ValueKey(s.id), stint: s, active: s.id == activeId),
+                              if (shownDone.isNotEmpty) ...[
+                                const SizedBox(height: DS.s12),
+                                Text('CHEQUERED · ${shownDone.length} FINISHED', style: DSText.sectionLabel),
+                                const SizedBox(height: DS.s12),
+                                for (final s in shownDone)
+                                  _TaskTile(key: ValueKey(s.id), stint: s, active: false),
+                              ],
+                              const SizedBox(height: 40),
+                            ],
+                          ),
               ),
             ],
           ),
@@ -89,30 +123,51 @@ class _PitBoardScreenState extends ConsumerState<PitBoardScreen> {
   }
 }
 
-class _AddRow extends StatelessWidget {
-  const _AddRow({required this.onAdd});
+/// The search field + create FAB. The field filters the list live; creation is
+/// the "+" button only (gated for guests).
+class _SearchRow extends StatelessWidget {
+  const _SearchRow({required this.controller, required this.onChanged, required this.onAdd});
 
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
   final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Input field — surface-2 fill, hairline border, tertiary placeholder.
+        // Search field — #1A1A1A fill, hairline border, neutral cursor.
         Expanded(
-          child: GestureDetector(
-            onTap: onAdd,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: DS.surfaceInput,
-                borderRadius: BorderRadius.circular(9999),
-                border: Border.all(color: DS.hairline),
-              ),
-              child: const Text(
-                'Add a task to the board…',
-                style: TextStyle(fontFamily: DS.fontFamily, color: DS.textTertiary, fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: -0.2),
-              ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: DS.card,
+              borderRadius: BorderRadius.circular(9999),
+              border: Border.all(color: DS.hairline),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, color: DS.textSecondary, size: 20),
+                const SizedBox(width: DS.s8),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    onChanged: onChanged,
+                    textInputAction: TextInputAction.search,
+                    cursorColor: DS.textPrimary,
+                    style: const TextStyle(
+                        fontFamily: DS.fontFamily, color: DS.textPrimary, fontSize: 16, fontWeight: FontWeight.w400),
+                    decoration: const InputDecoration(
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 15),
+                      border: InputBorder.none,
+                      hintText: 'Search tasks',
+                      hintStyle: TextStyle(
+                          fontFamily: DS.fontFamily, color: DS.textTertiary, fontSize: 16, fontWeight: FontWeight.w400),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -136,14 +191,44 @@ class _AddRow extends StatelessWidget {
   }
 }
 
-class _TaskTile extends ConsumerWidget {
-  const _TaskTile({required this.stint, required this.active});
+class _TaskTile extends ConsumerStatefulWidget {
+  const _TaskTile({super.key, required this.stint, required this.active});
 
   final Stint stint;
   final bool active;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TaskTile> createState() => _TaskTileState();
+}
+
+class _TaskTileState extends ConsumerState<_TaskTile> {
+  bool _showHint = false;
+  Timer? _hintTimer;
+
+  @override
+  void dispose() {
+    _hintTimer?.cancel();
+    super.dispose();
+  }
+
+  // Single tap on the already-loaded card hints how to unload, fading out.
+  void _flashHint() {
+    _hintTimer?.cancel();
+    setState(() => _showHint = true);
+    _hintTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _showHint = false);
+    });
+  }
+
+  void _clearHint() {
+    _hintTimer?.cancel();
+    if (_showHint) setState(() => _showHint = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stint = widget.stint;
+    final active = widget.active;
     final actions = ref.read(stintActionsProvider);
     final loaded = active && !stint.isDone;
 
@@ -159,49 +244,80 @@ class _TaskTile extends ConsumerWidget {
         borderRadius: BorderRadius.circular(DS.rCard),
         child: Material(
           type: MaterialType.transparency,
-          child: InkWell(
-            onTap: stint.isDone ? null : () => actions.load(stint.id),
+          // Single tap on an unselected card loads it (instant — no double-tap
+          // recognizer); on the selected card it shows the unload hint, and a
+          // double-tap unloads. Done cards aren't loadable.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: stint.isDone
+                ? null
+                : () => loaded ? _flashHint() : actions.load(stint.id),
+            onDoubleTap: loaded
+                ? () {
+                    actions.unload();
+                    _clearHint();
+                  }
+                : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DS.s18, vertical: DS.s12),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s17, vertical: DS.s8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Circle checkbox — tap toggles complete.
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => actions.toggleDone(stint),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: DS.s12),
-                      child: Icon(
-                        stint.isDone ? Icons.check_circle : Icons.circle_outlined,
-                        color: stint.isDone ? DS.textSecondary : DS.textTertiary,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          stint.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: DSText.cardTitle.copyWith(
-                            color: stint.isDone ? DS.textTertiary : DS.textPrimary,
+                  Row(
+                    children: [
+                      // Circle checkbox — tap toggles complete.
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => actions.toggleDone(stint),
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: DS.s12),
+                          child: Icon(
+                            stint.isDone ? Icons.check_circle : Icons.circle_outlined,
+                            color: stint.isDone ? DS.textSecondary : DS.textTertiary,
+                            size: 20,
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(formatCardDate(stint.createdAt), style: DSText.caption.copyWith(letterSpacing: 0.6)),
-                      ],
-                    ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stint.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: DSText.cardTitle.copyWith(
+                                fontSize: 17,
+                                color: stint.isDone ? DS.textTertiary : DS.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(formatCardDate(stint.createdAt),
+                                style: DSText.caption.copyWith(fontSize: 12, letterSpacing: 0.6)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: DS.s8),
+                      // Lap/pomodoro target now lives on the stint detail screen,
+                      // reached via the chevron — the card face stays clean.
+                      _MiniButton(
+                        icon: Icons.chevron_right,
+                        semantic: 'Open stint card',
+                        onTap: () => context.push('/board/task/${stint.id}'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: DS.s8),
-                  // Lap/pomodoro target now lives on the stint detail screen,
-                  // reached via the chevron — the card face stays clean.
-                  _MiniButton(
-                    icon: Icons.chevron_right,
-                    semantic: 'Open stint card',
-                    onTap: () => context.push('/board/task/${stint.id}'),
+                  // "Double-tap to unload" hint — only on the selected card.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 160),
+                    alignment: Alignment.topLeft,
+                    child: (_showHint && loaded)
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 6, left: 32),
+                            child: Text('Double-tap to unload',
+                                style: DSText.caption.copyWith(color: DS.textTertiary)),
+                          )
+                        : const SizedBox(width: double.infinity),
                   ),
                 ],
               ),
@@ -248,10 +364,10 @@ class _MiniButton extends StatelessWidget {
       label: semantic,
       child: InkResponse(
         onTap: onTap,
-        radius: 24,
+        radius: 22,
         child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, size: 22, color: enabled ? DS.textSecondary : DS.textTertiary.withValues(alpha: 0.5)),
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 18, color: enabled ? DS.textSecondary : DS.textTertiary.withValues(alpha: 0.5)),
         ),
       ),
     );
@@ -287,32 +403,80 @@ class _AddTaskDialogState extends State<_AddTaskDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return Dialog(
       backgroundColor: DS.card,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
-      title: const Text('ADD TASK', style: DSText.sectionLabel),
-      content: TextField(
-        controller: _ctrl,
-        autofocus: true,
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => _submit(),
-        style: DSText.body,
-        cursorColor: DS.accent,
-        decoration: const InputDecoration(
-          hintText: 'Task name',
-          hintStyle: TextStyle(fontFamily: DS.fontFamily, color: DS.textTertiary, fontSize: 17, fontWeight: FontWeight.w400),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(DS.rCard),
+        side: const BorderSide(color: DS.hairline),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s24, DS.s24, DS.s18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('New Task', style: DSText.cardTitle),
+            const SizedBox(height: DS.s17),
+            // Design-system input — filled surface, hairline border, 14px
+            // radius, no Material underline, neutral cursor.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: DS.surfaceInput,
+                borderRadius: BorderRadius.circular(DS.rInput),
+                border: Border.all(color: DS.hairline),
+              ),
+              child: TextField(
+                controller: _ctrl,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(),
+                cursorColor: DS.textPrimary,
+                style: const TextStyle(
+                    fontFamily: DS.fontFamily, color: DS.textPrimary, fontSize: 16, fontWeight: FontWeight.w400),
+                decoration: const InputDecoration(
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 16),
+                  border: InputBorder.none,
+                  hintText: 'Task name',
+                  hintStyle: TextStyle(
+                      fontFamily: DS.fontFamily, color: DS.textTertiary, fontSize: 16, fontWeight: FontWeight.w400),
+                ),
+              ),
+            ),
+            const SizedBox(height: DS.s18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: DS.textSecondary,
+                    textStyle: const TextStyle(fontFamily: DS.fontFamily, fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: DS.s8),
+                // Primary — filled accent.
+                GestureDetector(
+                  onTap: _submit,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: DS.accent,
+                      borderRadius: BorderRadius.circular(DS.rInput),
+                    ),
+                    child: const Text('Add',
+                        style: TextStyle(
+                            fontFamily: DS.fontFamily, color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('CANCEL', style: TextStyle(fontFamily: DS.fontFamily, color: DS.textSecondary)),
-        ),
-        TextButton(
-          onPressed: _submit,
-          child: const Text('ADD', style: TextStyle(fontFamily: DS.fontFamily, color: DS.accent)),
-        ),
-      ],
     );
   }
 }
@@ -331,6 +495,25 @@ class _EmptyGrid extends StatelessWidget {
           Text('GRID EMPTY', style: DSText.cardTitle.copyWith(fontSize: 17, letterSpacing: 0.5)),
           const SizedBox(height: DS.s4),
           const Text('ADD A TASK TO START', style: DSText.sectionLabel),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown when a search query matches no tasks (the board isn't empty).
+class _NoMatch extends StatelessWidget {
+  const _NoMatch();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.search_off, color: DS.textTertiary, size: 44),
+          const SizedBox(height: DS.s12),
+          Text('No tasks match', style: DSText.body.copyWith(color: DS.textSecondary)),
         ],
       ),
     );

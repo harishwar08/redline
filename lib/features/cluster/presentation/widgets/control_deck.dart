@@ -31,7 +31,7 @@ class ControlDeck extends StatelessWidget {
   String get _engineLabel => switch (status) {
         TimerStatus.running => 'Stop',
         TimerStatus.paused => 'Resume',
-        _ => 'Start\nLap',
+        _ => 'Start',
       };
 
   @override

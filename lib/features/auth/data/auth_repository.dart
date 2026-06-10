@@ -13,6 +13,9 @@ abstract interface class AuthRepository {
   /// Sign out the current user.
   Future<void> signOut();
 
+  /// Permanently delete the current Firebase Auth account.
+  Future<void> deleteAccount();
+
   /// The current uid synchronously, or null if signed out.
   String? get currentUid;
 

@@ -76,8 +76,9 @@ class _TabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Active tab: accent icon + accent underline. Inactive: text-secondary.
-    // No glow, no shadow — surfaces separate by the hairline only.
+    // Active tab: accent-red icon + label. Inactive: text-secondary. No
+    // underline, no glow — colour alone marks the active destination.
+    final color = active ? accent : DS.textSecondary;
     return Semantics(
       button: true,
       selected: active,
@@ -87,28 +88,16 @@ class _TabItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 4),
-            Icon(tab.icon, color: active ? accent : DS.textSecondary, size: 22),
-            const SizedBox(height: 5),
+            Icon(tab.icon, color: color, size: 22),
+            const SizedBox(height: 6),
             Text(
               tab.label.toUpperCase(),
               style: TextStyle(
                 fontFamily: DS.fontFamily,
-                color: active ? DS.textPrimary : DS.textSecondary,
+                color: color,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 6),
-            // Accent underline on the active tab — no glow.
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              height: 2.5,
-              width: active ? 26 : 0,
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ],

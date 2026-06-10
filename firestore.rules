@@ -35,12 +35,15 @@ service cloud.firestore {
     }
 
     function validProfile(p) {
+      // Current profile shape: name + createdAt required; age/sex/number/
+      // photoUrl validated when present. Legacy fields (team/country/
+      // liveryColor/phone) are allowed but no longer required.
       return p.name is string && p.name.size() <= 100
-        && p.team is string && p.team.size() <= 100
-        && p.country is string && p.country.size() <= 60
-        && p.number is int && p.number >= 0 && p.number <= 9999
-        && p.liveryColor is string && p.liveryColor.size() <= 16
-        && p.createdAt is timestamp;
+        && p.createdAt is timestamp
+        && (!('age' in p) || (p.age is int && p.age >= 0 && p.age <= 150))
+        && (!('sex' in p) || (p.sex is string && p.sex in ['', 'male', 'female']))
+        && (!('number' in p) || (p.number is int && p.number >= 0 && p.number <= 9999))
+        && (!('photoUrl' in p) || p.photoUrl is string);
     }
 
     function validSettings(s) {

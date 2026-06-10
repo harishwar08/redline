@@ -35,6 +35,12 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> deleteAccount() async {
+    _current = null;
+    _controller.add(null);
+  }
+
+  @override
   String? get currentUid => _current?.uid;
 
   @override

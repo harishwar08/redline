@@ -1,6 +1,6 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio/just_audio.dart';
 
 /// Session sound cues. Asset paths are wired but the files ship later (like the
 /// fonts) — drop them into `assets/audio/`, declare them in `pubspec.yaml`, and
@@ -8,11 +8,12 @@ import 'package:just_audio/just_audio.dart';
 enum Sfx { engineStart, lapComplete, pitIn, pitOut }
 
 extension on Sfx {
+  // Paths are relative to `assets/` for audioplayers' [AssetSource].
   String get asset => switch (this) {
-        Sfx.engineStart => 'assets/audio/engine_start.mp3',
-        Sfx.lapComplete => 'assets/audio/lap_complete.mp3',
-        Sfx.pitIn => 'assets/audio/pit_in.mp3',
-        Sfx.pitOut => 'assets/audio/pit_out.mp3',
+        Sfx.engineStart => 'audio/engine_start.mp3',
+        Sfx.lapComplete => 'audio/lap_complete.mp3',
+        Sfx.pitIn => 'audio/pit_in.mp3',
+        Sfx.pitOut => 'audio/pit_out.mp3',
       };
 }
 
@@ -25,9 +26,8 @@ class AudioService {
     if (!enabled) return;
     try {
       _player ??= AudioPlayer();
-      await _player!.setAsset(sfx.asset);
-      await _player!.seek(Duration.zero);
-      await _player!.play();
+      await _player!.stop();
+      await _player!.play(AssetSource(sfx.asset));
     } catch (e) {
       // Asset not bundled yet / platform unsupported — stay silent.
       if (kDebugMode) debugPrint('AudioService: skipped ${sfx.asset} ($e)');

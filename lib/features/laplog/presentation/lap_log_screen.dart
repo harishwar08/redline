@@ -56,48 +56,39 @@ class _LapLogScreenState extends ConsumerState<LapLogScreen> {
               const _HeroCar(),
               const SizedBox(height: DS.s24),
 
-              // 3 — Three metric cards, directly under the car.
+              // 3 — Three metric cards (focus time for the selected period).
               Row(
                 children: [
                   _StatCard(
-                    icon: Icons.location_on_outlined,
-                    label: 'Distance',
-                    value: minutesToKm(totalMin.toInt()).toStringAsFixed(1),
+                    icon: Icons.schedule,
+                    label: 'Hours',
+                    value: formatHoursMinutes(totalMin),
                   ),
                   const SizedBox(width: DS.s12),
                   _StatCard(
                     icon: Icons.speed_outlined,
                     label: 'Average',
-                    value: minutesToKm(avg.toInt()).toStringAsFixed(1),
+                    value: formatHoursMinutes(avg),
                   ),
                   const SizedBox(width: DS.s12),
                   _StatCard(
                     icon: Icons.emoji_events_outlined,
                     label: 'Best',
-                    value: minutesToKm(best.toInt()).toStringAsFixed(1),
+                    value: formatHoursMinutes(best),
                     valueColor: DS.accent, // BEST — the allowed accent use here
                   ),
                 ],
               ),
               const SizedBox(height: DS.s17),
 
-              // 4 — Bar chart card, fills the remaining space.
+              // 4 — Bar chart card, fills the remaining space. Nothing renders
+              // beneath it.
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(DS.s17, DS.s17, DS.s17, DS.s8),
                   decoration: DS.cardDecoration(),
                   child: hasData ? _Chart(bars: bars, peak: peak) : const _EmptyChart(),
                 ),
-              ),
-              const SizedBox(height: DS.s17),
-
-              // 5 — Footer line.
-              Text(
-                hasData
-                    ? '${_range == LapRange.week ? 'THIS WEEK' : 'LAST 6 WEEKS'} · ${formatDuration(totalMin.toInt())} OF FOCUS'
-                    : 'NO LAPS LOGGED YET',
-                textAlign: TextAlign.center,
-                style: DSText.caption.copyWith(color: DS.textPrimary, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -191,7 +182,25 @@ class _Chart extends StatelessWidget {
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
         maxY: (maxY * 1.25).clamp(10, double.infinity),
-        barTouchData: BarTouchData(enabled: false),
+        // Press-and-hold a bar to reveal its focus time as a DS tooltip. The
+        // large top + side touch threshold makes every column (even empty
+        // 0-height bars) hold-able across its full height.
+        barTouchData: BarTouchData(
+          enabled: true,
+          handleBuiltInTouches: true,
+          touchExtraThreshold: const EdgeInsets.only(top: 1000, left: 14, right: 14),
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => DS.cardRaised,
+            tooltipBorderRadius: BorderRadius.circular(DS.rTile),
+            tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            tooltipMargin: 8,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+              '${formatHoursMinutes(rod.toY)} hr',
+              const TextStyle(
+                  fontFamily: DS.fontFamily, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
@@ -275,10 +284,10 @@ class _StatCard extends StatelessWidget {
               child: RichText(
                 text: TextSpan(
                   text: value,
-                  style: DSText.statValue.copyWith(color: valueColor),
+                  style: DSText.statValue.copyWith(color: valueColor, fontSize: 22),
                   children: const [
                     TextSpan(
-                      text: ' km',
+                      text: ' hr',
                       style: TextStyle(
                           fontFamily: DS.fontFamily,
                           color: DS.textTertiary, fontSize: 13, fontWeight: FontWeight.w400, fontStyle: FontStyle.normal),

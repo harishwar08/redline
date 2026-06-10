@@ -1,17 +1,22 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/firestore_providers.dart';
 import '../../../core/prefs.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../auth/application/auth_providers.dart';
 import '../../cluster/data/settings_controller.dart';
 import '../../cluster/data/timer_controller.dart';
 import '../../garage/data/livery_controller.dart';
 import '../../tasks/application/stint_providers.dart';
+import 'profile_photo.dart';
 
-/// Deletes the signed-in user's cloud data (stints, laps, profile + settings)
-/// and resets all local state. The auth account itself is kept (account
-/// deletion is optional for now) — the user stays signed in with empty data.
+/// Full account + data deletion: removes the user's cloud data (stints, laps,
+/// profile + settings), the local profile photo, and the Firebase Auth account,
+/// then clears local prefs. A fresh anonymous account is minted afterward so the
+/// app keeps a working uid (a clean slate) without needing a restart.
 class DataReset {
   DataReset(this._ref);
 
@@ -29,15 +34,35 @@ class DataReset {
     await _deleteAll(db, user.collection('laps'));
     await user.delete(); // clears profile + settings
 
-    // Wipe local state.
+    // Delete the locally-stored profile photo, if any.
+    final photoPath = _ref.read(sharedPrefsProvider).getString(PrefKeys.profilePhotoPath);
+    if (photoPath != null && photoPath.isNotEmpty) {
+      try {
+        await File(photoPath).delete();
+      } catch (_) {/* already gone — ignore */}
+    }
+
+    // Delete the Firebase Auth account, then wipe local state and mint a fresh
+    // anonymous account so per-user data paths keep working.
+    final auth = _ref.read(authRepositoryProvider);
+    try {
+      await auth.deleteAccount();
+    } catch (_) {/* e.g. requires-recent-login — data is already gone */}
+
     await _ref.read(sharedPrefsProvider).clear();
 
-    // Reload everything that reads from shared_preferences so the UI reflects
-    // the cleared state without a restart.
+    try {
+      await auth.signInAnonymously();
+    } catch (_) {/* offline — the splash re-bootstraps on next launch */}
+
+    // Reload everything that reads from shared_preferences / auth so the UI
+    // reflects the cleared state without a restart.
     _ref.invalidate(activeStintIdProvider);
     _ref.invalidate(settingsControllerProvider);
     _ref.invalidate(liveryControllerProvider);
     _ref.invalidate(timerControllerProvider);
+    _ref.invalidate(profilePhotoProvider);
+    _ref.invalidate(authControllerProvider); // stub account → guest (flag cleared)
   }
 
   Future<void> _deleteAll(

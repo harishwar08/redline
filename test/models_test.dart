@@ -80,6 +80,9 @@ void main() {
       country: 'BRA',
       number: 12,
       liveryColor: '#FF8000',
+      phone: '+5511999',
+      age: 34,
+      sex: 'male',
     );
 
     final back = DriverProfile.fromJson(p.toJson());
@@ -88,6 +91,9 @@ void main() {
     expect(back.country, 'BRA');
     expect(back.number, 12);
     expect(back.liveryColor, '#FF8000');
+    expect(back.phone, '+5511999');
+    expect(back.age, 34);
+    expect(back.sex, 'male');
     expect(back.createdAt, t);
 
     expect(p.toMap()['createdAt'], isA<Timestamp>());

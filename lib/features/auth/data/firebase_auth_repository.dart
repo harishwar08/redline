@@ -26,6 +26,13 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<void> signOut() => _auth.signOut();
 
   @override
+  Future<void> deleteAccount() async {
+    // Works for the anonymous account without re-auth; a real account may throw
+    // `requires-recent-login` (handled by the caller).
+    await _auth.currentUser?.delete();
+  }
+
+  @override
   String? get currentUid => _auth.currentUser?.uid;
 
   @override

@@ -1,15 +1,17 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/prefs.dart';
+import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/sign_in_screen.dart';
+import '../features/auth/presentation/sign_up_screen.dart';
 import '../features/cluster/presentation/cluster_screen.dart';
 import '../features/dev/presentation/gallery_screen.dart';
 import '../features/laplog/presentation/lap_log_screen.dart';
+import '../features/onboarding/presentation/licence_screen.dart';
 import '../features/onboarding/presentation/warm_up_screen.dart';
 import '../features/profile/presentation/driver_screen.dart';
-import '../features/profile/presentation/tuning_bay_screen.dart';
+import '../features/settings/presentation/settings_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
 import '../features/tasks/presentation/pit_board_screen.dart';
 import '../features/tasks/presentation/stint_card_screen.dart';
@@ -25,25 +27,30 @@ CustomTransitionPage<void> _fade(Widget child) => CustomTransitionPage<void>(
           FadeTransition(opacity: animation, child: child),
     );
 
-/// The app's [GoRouter]. Onboarding is enforced by a redirect that reads the
-/// persisted `onboarded` flag - first-run users are pushed to the Warm-Up Lap.
+/// The app's [GoRouter] — **guest-first**: the app opens straight to the
+/// Cluster for everyone. There is no auth wall; the auth screens
+/// (`/sign-in`, `/sign-up`, `/forgot-password`) are reached only by explicit
+/// navigation (the Driver prompt card, the Pit Board create-gate, Settings).
+/// The UI reacts to `authControllerProvider` (guest vs authenticated) instead.
 final routerProvider = Provider<GoRouter>((ref) {
-  final prefs = ref.watch(sharedPrefsProvider);
-
   return GoRouter(
     navigatorKey: _rootKey,
     initialLocation: '/splash',
-    redirect: (context, state) {
-      final onboarded = prefs.getBool(PrefKeys.onboarded) ?? false;
-      final loc = state.matchedLocation;
-      final exempt = loc == '/splash' || loc == '/warmup' || loc == '/signin' || loc == '/gallery';
-      if (!onboarded && !exempt) return '/warmup';
-      return null;
-    },
     routes: [
       GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
+
+      // ── Account auth (stubbed frontend) — reached via explicit navigation ──
+      GoRoute(path: '/sign-in', builder: (_, _) => const SignInScreen()),
+      GoRoute(path: '/sign-up', builder: (_, _) => const SignUpScreen()),
+      GoRoute(path: '/forgot-password', builder: (_, _) => const ForgotPasswordScreen()),
+
+      // ── Settings (pushed over the shell; back returns to Driver) ──────────
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
+
+      // ── Legacy onboarding routes (kept reachable; no longer forced) ───────
       GoRoute(path: '/warmup', builder: (_, _) => const WarmUpScreen()),
-      GoRoute(path: '/signin', builder: (_, _) => const SignInScreen()),
+      GoRoute(path: '/signin', builder: (_, _) => const LicenceScreen()),
+
       GoRoute(path: '/gallery', builder: (_, _) => const GalleryScreen()),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => AppShell(navigationShell: shell),
@@ -70,13 +77,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(
-                path: '/driver',
-                builder: (_, _) => const DriverScreen(),
-                routes: [
-                  GoRoute(path: 'tuning', pageBuilder: (_, _) => _fade(const TuningBayScreen())),
-                ],
-              ),
+              GoRoute(path: '/driver', builder: (_, _) => const DriverScreen()),
             ],
           ),
         ],
@@ -84,4 +85,3 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-

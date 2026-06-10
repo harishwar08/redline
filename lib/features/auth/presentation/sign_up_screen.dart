@@ -1,0 +1,262 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../application/auth_controller.dart';
+import 'auth_validators.dart';
+import 'widgets/auth_buttons.dart';
+import 'widgets/auth_error_banner.dart';
+import 'widgets/auth_scaffold.dart';
+import 'widgets/auth_styles.dart';
+import 'widgets/brand_lockup.dart';
+import 'widgets/redline_text_field.dart';
+import 'widgets/terms_checkbox.dart';
+
+/// Sign Up — create an account (name, email, optional mobile, password). The CTA
+/// stays disabled until the form is valid and the terms box is checked. Auth is
+/// stubbed (see [AuthController]).
+class SignUpScreen extends ConsumerStatefulWidget {
+  const SignUpScreen({super.key});
+
+  @override
+  ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
+}
+
+class _SignUpScreenState extends ConsumerState<SignUpScreen> {
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _mobile = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+
+  final _nameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _mobileFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _confirmFocus = FocusNode();
+
+  String? _nameError;
+  String? _emailError;
+  String? _mobileError;
+  String? _passwordError;
+  String? _confirmError;
+  bool _agreed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authControllerProvider.notifier).clearError();
+    });
+    for (final c in [_name, _email, _mobile, _password, _confirm]) {
+      c.addListener(_onChanged);
+    }
+    _bindBlur(_nameFocus, _validateName);
+    _bindBlur(_emailFocus, _validateEmail);
+    _bindBlur(_mobileFocus, _validateMobile);
+    _bindBlur(_passwordFocus, _validatePassword);
+    _bindBlur(_confirmFocus, _validateConfirm);
+  }
+
+  void _bindBlur(FocusNode node, VoidCallback validate) {
+    node.addListener(() {
+      if (!node.hasFocus) validate();
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_name, _email, _mobile, _password, _confirm]) {
+      c.dispose();
+    }
+    for (final f in [_nameFocus, _emailFocus, _mobileFocus, _passwordFocus, _confirmFocus]) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  void _onChanged() {
+    // Live-correct any field already showing an error, then rebuild so the
+    // submit button tracks current validity.
+    if (_nameError != null) _nameError = AuthValidators.name(_name.text);
+    if (_emailError != null) _emailError = AuthValidators.email(_email.text);
+    if (_mobileError != null) _mobileError = AuthValidators.mobileOptional(_mobile.text);
+    if (_passwordError != null) _passwordError = AuthValidators.password(_password.text);
+    if (_confirmError != null) {
+      _confirmError = AuthValidators.confirmPassword(_confirm.text, _password.text);
+    }
+    setState(() {});
+  }
+
+  void _validateName() => setState(() => _nameError = AuthValidators.name(_name.text));
+  void _validateEmail() => setState(() => _emailError = AuthValidators.email(_email.text));
+  void _validateMobile() =>
+      setState(() => _mobileError = AuthValidators.mobileOptional(_mobile.text));
+  void _validatePassword() =>
+      setState(() => _passwordError = AuthValidators.password(_password.text));
+  void _validateConfirm() => setState(
+      () => _confirmError = AuthValidators.confirmPassword(_confirm.text, _password.text));
+
+  bool get _formValid =>
+      _agreed &&
+      AuthValidators.name(_name.text) == null &&
+      AuthValidators.email(_email.text) == null &&
+      AuthValidators.mobileOptional(_mobile.text) == null &&
+      AuthValidators.password(_password.text) == null &&
+      AuthValidators.confirmPassword(_confirm.text, _password.text) == null;
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    _validateName();
+    _validateEmail();
+    _validateMobile();
+    _validatePassword();
+    _validateConfirm();
+    if (!_formValid) return;
+    await ref.read(authControllerProvider.notifier).signUpWithEmail(
+          name: _name.text.trim(),
+          email: _email.text.trim(),
+          mobile: _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
+          password: _password.text,
+        );
+  }
+
+  Future<void> _google() => ref.read(authControllerProvider.notifier).signInWithGoogle();
+
+  void _placeholder(String what) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('$what — coming soon')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(authControllerProvider);
+    final loading = auth.isLoading;
+
+    // Guest-first: no router redirect, so the screen returns to the app itself
+    // once the (stubbed) sign-up succeeds.
+    ref.listen(authControllerProvider, (_, next) {
+      if (next.isAuthenticated) context.go('/');
+    });
+
+    return AuthScaffold(
+      showBack: true,
+      onBack: () => context.go('/sign-in'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 8),
+          const Align(alignment: Alignment.centerLeft, child: BrandLockup(compact: true)),
+          const SizedBox(height: 24),
+          const Text('Sign Up', style: AuthStyle.heading),
+          const SizedBox(height: 10),
+          const Text(
+            'Create your account and start tracking your performance',
+            style: AuthStyle.subtitle,
+          ),
+          const SizedBox(height: 28),
+          RedlineTextField(
+            controller: _name,
+            focusNode: _nameFocus,
+            icon: Icons.person_outline,
+            hint: 'Full name',
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.name,
+            autofillHints: const [AutofillHints.name],
+            errorText: _nameError,
+            onSubmitted: (_) => _emailFocus.requestFocus(),
+            enabled: !loading,
+          ),
+          const SizedBox(height: 16),
+          RedlineTextField(
+            controller: _email,
+            focusNode: _emailFocus,
+            icon: Icons.mail_outline,
+            hint: 'Email address',
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            errorText: _emailError,
+            onSubmitted: (_) => _mobileFocus.requestFocus(),
+            enabled: !loading,
+          ),
+          const SizedBox(height: 16),
+          RedlineTextField(
+            controller: _mobile,
+            focusNode: _mobileFocus,
+            icon: Icons.phone_outlined,
+            hint: 'Mobile number',
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.telephoneNumber],
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d+ ]'))],
+            errorText: _mobileError,
+            onSubmitted: (_) => _passwordFocus.requestFocus(),
+            enabled: !loading,
+          ),
+          const SizedBox(height: 16),
+          RedlineTextField(
+            controller: _password,
+            focusNode: _passwordFocus,
+            icon: Icons.lock_outline,
+            hint: 'Create password',
+            obscurable: true,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.newPassword],
+            errorText: _passwordError,
+            onSubmitted: (_) => _confirmFocus.requestFocus(),
+            enabled: !loading,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Password must be at least 8 characters with a mix of letters, numbers & symbols.',
+            style: AuthStyle.helper,
+          ),
+          const SizedBox(height: 16),
+          RedlineTextField(
+            controller: _confirm,
+            focusNode: _confirmFocus,
+            icon: Icons.lock_outline,
+            hint: 'Confirm password',
+            obscurable: true,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.newPassword],
+            errorText: _confirmError,
+            onSubmitted: (_) => _formValid ? _submit() : null,
+            enabled: !loading,
+          ),
+          const SizedBox(height: 20),
+          TermsCheckbox(
+            value: _agreed,
+            onChanged: (v) => setState(() => _agreed = v),
+            onTapTerms: () => _placeholder('Terms of Service'),
+            onTapPrivacy: () => _placeholder('Privacy Policy'),
+          ),
+          const SizedBox(height: 24),
+          AuthErrorBanner(
+            message: auth.isError ? auth.message : null,
+            onDismiss: () => ref.read(authControllerProvider.notifier).clearError(),
+          ),
+          PrimaryButton(
+            label: 'Sign Up',
+            loading: loading,
+            onPressed: _formValid ? _submit : null,
+          ),
+          const SizedBox(height: 22),
+          const OrDivider(),
+          const SizedBox(height: 22),
+          GoogleButton(onPressed: loading ? null : _google, loading: false),
+          const SizedBox(height: 28),
+          AuthFooterLink(
+            prompt: 'Already have an account?',
+            linkText: 'Sign In',
+            onTap: () => context.go('/sign-in'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}

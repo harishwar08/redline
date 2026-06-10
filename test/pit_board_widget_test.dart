@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:redline/core/firestore_providers.dart';
 import 'package:redline/core/prefs.dart';
+import 'package:redline/features/auth/application/auth_controller.dart';
 import 'package:redline/features/auth/application/auth_providers.dart';
 import 'package:redline/features/auth/data/app_user.dart';
 import 'package:redline/features/tasks/application/stint_providers.dart';
@@ -15,15 +16,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fakes/fake_auth_repository.dart';
 
+/// [authed] overrides the stubbed **account** auth gate (independent of the
+/// anonymous data-layer auth): true exercises the create path, false the gate.
 ProviderContainer _container(
   SharedPreferences prefs,
   FakeFirebaseFirestore db,
-  FakeAuthRepository auth,
-) =>
+  FakeAuthRepository auth, {
+  bool authed = true,
+}) =>
     ProviderContainer(overrides: [
       sharedPrefsProvider.overrideWithValue(prefs),
       authRepositoryProvider.overrideWithValue(auth),
       firestoreProvider.overrideWithValue(db),
+      isAuthenticatedProvider.overrideWithValue(authed),
     ]);
 
 Widget _host(ProviderContainer c) => UncontrolledProviderScope(
@@ -81,16 +86,16 @@ void main() {
     expect(find.text('GRID EMPTY'), findsOneWidget);
 
     await _openModal(tester);
-    expect(find.text('ADD TASK'), findsOneWidget);
+    expect(find.text('New Task'), findsOneWidget);
 
     // Empty input is ignored; the modal stays open.
-    await tester.tap(find.text('ADD'));
+    await tester.tap(find.text('Add'));
     await tester.pump();
-    expect(find.text('ADD TASK'), findsOneWidget);
+    expect(find.text('New Task'), findsOneWidget);
 
     // Real input creates the stint; it streams into the list.
-    await tester.enterText(find.byType(TextField), 'Draft Q3 narrative');
-    await tester.tap(find.text('ADD'));
+    await tester.enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), 'Draft Q3 narrative');
+    await tester.tap(find.text('Add'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300)); // dialog dismiss
     await _pumpUntil(tester, find.text('Draft Q3 narrative'));
@@ -100,6 +105,28 @@ void main() {
     await tester.tap(find.text('Draft Q3 narrative'));
     await tester.pump();
     expect(c.read(activeStintIdProvider), isNotNull);
+  });
+
+  testWidgets('guest "+" shows the auth gate and creates nothing', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final auth = _seededAuth();
+    addTearDown(auth.dispose);
+    final c = _container(prefs, FakeFirebaseFirestore(), auth, authed: false);
+    addTearDown(c.dispose);
+
+    await tester.pumpWidget(_host(c));
+    await _pumpUntilSignedIn(tester, c);
+    await _pumpUntil(tester, find.text('GRID EMPTY'));
+
+    await tester.tap(find.bySemanticsLabel('Add task'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    // The create-gate appears; the ADD TASK modal does not; nothing is created.
+    expect(find.text('Sign in to create tasks'), findsOneWidget);
+    expect(find.text('New Task'), findsNothing);
+    expect(c.read(activeStintIdProvider), isNull);
   });
 
   testWidgets('keyboard "done" inside the modal also adds', (tester) async {
@@ -114,7 +141,7 @@ void main() {
     await _pumpUntilSignedIn(tester, c);
     await _openModal(tester);
 
-    await tester.enterText(find.byType(TextField), 'Inbox to zero');
+    await tester.enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), 'Inbox to zero');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -134,10 +161,10 @@ void main() {
     await _pumpUntilSignedIn(tester, c);
     await _openModal(tester);
 
-    await tester.enterText(find.byType(TextField), '   ');
-    await tester.tap(find.text('ADD'));
+    await tester.enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), '   ');
+    await tester.tap(find.text('Add'));
     await tester.pump();
-    expect(find.text('ADD TASK'), findsOneWidget); // still open, nothing added
+    expect(find.text('New Task'), findsOneWidget); // still open, nothing added
   });
 
   test('the loaded stint id persists across a relaunch (shared store)', () async {

@@ -30,6 +30,14 @@ class PrefKeys {
   static const carNumber = 'driver.carNumber';
   static const nationality = 'driver.nationality';
   static const onboarded = 'driver.onboarded';
+  // Local profile photo path (FRONTEND-only for now; moves to backend storage
+  // later). Stores the picked image's file path.
+  static const profilePhotoPath = 'driver.photoPath';
+
+  // Account auth (FRONTEND STUB ONLY — see AuthController / AUTH_NOTES.md).
+  // The real backend will replace this with Firebase auth state; the stub
+  // persists "signed in" here so the gate behaves realistically between runs.
+  static const authStubSignedIn = 'auth.stubSignedIn';
 
   // Active task
   static const activeTaskId = 'tasks.activeId';

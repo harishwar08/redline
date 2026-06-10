@@ -1,20 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/design_system.dart';
 import '../../../core/tokens.dart';
 import '../../../core/typography.dart';
 import '../../../shared/services/accel_sound.dart';
 import '../../../shared/services/slam_sound.dart';
 import '../../../shared/widgets/confirm_sheet.dart';
-import '../../../shared/widgets/panels.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../garage/data/livery_controller.dart';
 import '../../tasks/application/stint_providers.dart';
+import '../data/settings_controller.dart';
 import '../data/timer_controller.dart';
 import '../domain/timer_models.dart';
 import 'widgets/control_deck.dart';
 import 'widgets/gauge.dart';
 import 'widgets/now_driving_panel.dart';
+
+/// Key on the NOW DRIVING card, used to align the abort popup with its top edge.
+final GlobalKey _nowDrivingKey = GlobalKey();
 
 /// The Cluster — the speedometer timer and its controls. The hero screen.
 class ClusterScreen extends ConsumerWidget {
@@ -40,14 +47,19 @@ class ClusterScreen extends ConsumerWidget {
     // Gauge ≈ 96% of screen width (small side margins).
     final diameter = (width - RSpace.s).clamp(280.0, 560.0);
 
+    // All app SFX are gated on the Settings "Sounds" toggle.
+    final soundOn = ref.watch(settingsControllerProvider).soundOn;
     // Preloaded low-latency "car slam" SFX, fired the instant a control is
     // pressed (non-blocking — the button's action still runs as usual).
     final slam = ref.read(slamSoundProvider);
     // Acceleration sound that rides the rev-up needle sweep.
     final accel = ref.read(accelSoundProvider);
+    void playSlam() {
+      if (soundOn) slam.play();
+    }
 
     void onEngine() {
-      slam.play();
+      playSlam();
       if (state.status == TimerStatus.running) {
         controller.pause();
       } else {
@@ -56,16 +68,22 @@ class ClusterScreen extends ConsumerWidget {
     }
 
     Future<void> onReset() async {
-      slam.play();
+      playSlam();
       // DNF deterrent: bail out of an in-flight focus lap loses the stint.
       if (state.mode == TimerMode.focus && state.status != TimerStatus.ready) {
         final remaining = state.endAt?.difference(DateTime.now()).inMilliseconds ?? state.remainingMs;
         final lost = ((state.totalMs - remaining) / 60000).ceil().clamp(0, 999);
+        // Align the popup's top edge with the NOW DRIVING card behind it.
+        final box = _nowDrivingKey.currentContext?.findRenderObject() as RenderBox?;
+        final topOffset = (box != null && box.hasSize) ? box.localToGlobal(Offset.zero).dy : null;
         final ok = await showRedlineConfirm(
           context,
           title: 'Abort the Lap',
-          message: 'The stint will not be recorded. $lost minute${lost == 1 ? '' : 's'} will be lost.',
+          message: '$lost minute${lost == 1 ? '' : 's'} will be lost.',
           confirmLabel: 'Abort the Lap',
+          topOffset: topOffset,
+          // Extend the bottom edge down a little so it fully covers "ENGINE".
+          extraBottom: 32,
         );
         if (ok) controller.reset();
       } else {
@@ -100,16 +118,35 @@ class ClusterScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       const Spacer(),
-                      Gauge(
-                        diameter: diameter,
-                        modeLabel: state.mode.gaugeLabel,
-                        running: state.isRunning,
-                        endAt: state.endAt,
-                        remainingMs: state.remainingMs,
-                        totalMs: state.totalMs,
-                        accent: accent,
-                        onRevStart: accel.start, // accel sound rides the rev-up sweep
-                        onRevEnd: accel.stop,
+                      // Hidden DEV affordance: long-press the gauge to flip the
+                      // stubbed account auth state (guest ⇄ authenticated) while
+                      // the backend isn't wired. Remove with the stub.
+                      GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onLongPress: () {
+                          ref.read(authControllerProvider.notifier).debugToggleAuth();
+                          final authed = ref.read(isAuthenticatedProvider);
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(milliseconds: 1200),
+                              backgroundColor: RColors.dialBlack2,
+                              content: Text('DEV · ${authed ? 'AUTHENTICATED' : 'GUEST'}',
+                                  style: RText.plateLabel(color: RColors.cream)),
+                            ));
+                        },
+                        child: Gauge(
+                          diameter: diameter,
+                          modeLabel: state.mode.gaugeLabel,
+                          running: state.isRunning,
+                          endAt: state.endAt,
+                          remainingMs: state.remainingMs,
+                          totalMs: state.totalMs,
+                          accent: accent,
+                          onRevStart: () { if (soundOn) accel.start(); }, // gated on Sounds
+                          onRevEnd: accel.stop,
+                        ),
                       ),
                       const SizedBox(height: RSpace.l),
                       // Card + controls keep their original ~12px side margin
@@ -117,8 +154,13 @@ class ClusterScreen extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: RSpace.s),
                         child: isBreak
-                            ? _BreakPanel(mode: state.mode)
+                            ? _BreakPanel(
+                                mode: state.mode,
+                                endAt: state.endAt,
+                                running: state.isRunning,
+                              )
                             : NowDrivingPanel(
+                                key: _nowDrivingKey,
                                 accent: accent,
                                 taskName: activeStint?.title,
                                 completedLaps: activeStint?.completedLaps ?? 0,
@@ -147,7 +189,7 @@ class ClusterScreen extends ConsumerWidget {
                           onEngine: onEngine,
                           onReset: onReset,
                           onNext: () {
-                            slam.play();
+                            playSlam();
                             controller.next();
                           },
                         ),
@@ -193,24 +235,69 @@ class ClusterScreen extends ConsumerWidget {
   }
 }
 
-/// Replaces NOW DRIVING during a break — a moment to step away.
-class _BreakPanel extends StatelessWidget {
-  const _BreakPanel({required this.mode});
+/// Replaces NOW DRIVING during a break — clean and minimal: just "Short Break"
+/// or "Long Break". In the final 5 seconds it switches to "Start the race" to
+/// cue the driver to resume.
+class _BreakPanel extends StatefulWidget {
+  const _BreakPanel({required this.mode, required this.endAt, required this.running});
+
   final TimerMode mode;
+  final DateTime? endAt;
+  final bool running;
+
+  @override
+  State<_BreakPanel> createState() => _BreakPanelState();
+}
+
+class _BreakPanelState extends State<_BreakPanel> {
+  Timer? _ticker;
+  bool _startSoon = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _evaluate();
+    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) => _evaluate());
+  }
+
+  @override
+  void didUpdateWidget(_BreakPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _evaluate();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  void _evaluate() {
+    final end = widget.endAt;
+    final remainingMs = (widget.running && end != null)
+        ? end.difference(DateTime.now()).inMilliseconds
+        : null;
+    final soon = remainingMs != null && remainingMs > 0 && remainingMs <= 5000;
+    if (soon != _startSoon && mounted) setState(() => _startSoon = soon);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final (title, sub) = mode == TimerMode.longBreak
-        ? ("Park it. You've earned the long rest.", 'LONG REST · STEP AWAY FROM THE WHEEL')
-        : ('Catch your breath.', 'PIT STOP · STRETCH, SIP, LOOK AWAY');
-    return BakelitePanel(
-      rim: PanelRim.brass,
-      child: Column(
-        children: [
-          Text(sub, style: RText.plateLabel(color: RColors.brassHi)),
-          const SizedBox(height: RSpace.s),
-          Text(title, textAlign: TextAlign.center, style: RText.title(color: RColors.cream)),
-        ],
+    final label = _startSoon
+        ? 'Start the race'
+        : (widget.mode == TimerMode.longBreak ? 'Long Break' : 'Short Break');
+    return Container(
+      width: double.infinity,
+      decoration: DS.cardDecoration(),
+      padding: const EdgeInsets.symmetric(horizontal: DS.s18, vertical: DS.s24),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: DSText.cardTitle.copyWith(
+          fontSize: 24,
+          color: _startSoon ? DS.accent : DS.textPrimary,
+        ),
       ),
     );
   }

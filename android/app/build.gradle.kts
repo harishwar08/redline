@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.redline.redline"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36 // Android 16
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -25,17 +25,23 @@ android {
         applicationId = "com.redline.redline"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = flutter.minSdkVersion // Firebase requires API 23+
+        targetSdk = 36 // Android 16
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Debug signing for now — a real upload key comes with Play setup.
             signingConfig = signingConfigs.getByName("debug")
+            // Shrink + obfuscate with R8, and strip unused resources.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

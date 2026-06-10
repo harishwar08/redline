@@ -35,6 +35,15 @@ String formatDuration(int minutes) {
   return m == 0 ? '${h}h' : '${h}h ${m}m';
 }
 
+/// `H:MM` hours readout from a focus-minutes total, e.g. 300 → "5:00",
+/// 75 → "1:15", 0 → "0:00". Used by the Lap Log stat cards (rendered "5:00 hr").
+String formatHoursMinutes(num minutes) {
+  final total = minutes.round();
+  final h = total ~/ 60;
+  final m = total % 60;
+  return '$h:${m.toString().padLeft(2, '0')}';
+}
+
 /// `YYYY-MM-DD` key for a date (the schema's `date` field, local time).
 String dateKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

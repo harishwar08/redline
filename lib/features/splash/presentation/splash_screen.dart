@@ -5,11 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../../core/tokens.dart';
 import '../../../core/typography.dart';
 import '../../../shared/widgets/screen_fx.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../auth/application/auth_providers.dart';
 
-/// Cold-start splash — the brand mark, briefly, while we ensure a uid exists
-/// (anonymous sign-in on first launch). Once auth is ready it routes onward; the
-/// router redirect then decides Warm-Up Lap vs Cluster.
+/// Cold-start splash — the brand mark, briefly, then into the Cluster
+/// (guest-first: everyone lands on the dashboard). The account auth state
+/// resolves during this beat so the guest/auth UI is settled before it shows.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -21,13 +22,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    // Warm the stubbed account auth controller so it resolves (guest vs
+    // authenticated) during the splash beat — avoids a flicker on the Cluster.
+    ref.read(authControllerProvider);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
-    // Hold the brand mark for a brief, deliberate beat so it never just flashes…
+    // Hold the brand mark for a brief, deliberate beat (covers the ~900ms stub
+    // auth resolve) so it never just flashes.
     final minimumShow = Future<void>.delayed(const Duration(milliseconds: 1100));
-    // …while ensuring a uid exists (anonymous sign-in if this is a fresh device).
+    // Best-effort: ensure a uid exists for the data layer (anonymous sign-in if
+    // this is a fresh device).
     try {
       await ref.read(authBootstrapProvider.future);
     } catch (_) {

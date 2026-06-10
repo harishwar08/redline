@@ -34,8 +34,7 @@ class NowDrivingPanel extends StatelessWidget {
     final loaded = taskName != null;
     final progress = targetLaps > 0 ? completedLaps / targetLaps : 0.0;
 
-    return Container(
-      decoration: DS.cardDecoration(), // same surface as the Pit Board cards
+    final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: DS.s18, vertical: DS.s14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,25 +55,21 @@ class NowDrivingPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: DS.s8),
-          InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(DS.rTile),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    loaded ? taskName! : 'Free drive — load a task from the Pit Board.',
-                    style: loaded
-                        ? DSText.cardTitle
-                        : DSText.body.copyWith(color: DS.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  loaded ? taskName! : 'Load a task from the Pit Board.',
+                  style: loaded
+                      ? DSText.cardTitle
+                      : DSText.body.copyWith(color: DS.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                if (onTap != null)
-                  const Icon(Icons.chevron_right, color: DS.textSecondary, size: 22),
-              ],
-            ),
+              ),
+              if (onTap != null)
+                const Icon(Icons.chevron_right, color: DS.textSecondary, size: 22),
+            ],
           ),
           if (loaded) ...[
             const SizedBox(height: DS.s14),
@@ -82,6 +77,19 @@ class NowDrivingPanel extends StatelessWidget {
             FuelGaugeProgress(value: progress, color: accent == RColors.oxblood ? RColors.brassHi : accent),
           ],
         ],
+      ),
+    );
+
+    // The whole card is tappable → Pit Board. The inner lap stepper's own
+    // buttons win the gesture arena, so +/- still work when a task is loaded.
+    return DecoratedBox(
+      decoration: DS.cardDecoration(), // same surface as the Pit Board cards
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(DS.rCard),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(onTap: onTap, child: content),
+        ),
       ),
     );
   }
