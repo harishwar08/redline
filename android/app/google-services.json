@@ -12,7 +12,20 @@
           "package_name": "com.redline.redline"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "484156668364-ea5gu5laom5t9ongg791ped0gike95p3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.redline.redline",
+            "certificate_hash": "eff732e833074f180090bff6788904c7ee0bb1d7"
+          }
+        },
+        {
+          "client_id": "484156668364-hjqu90j2frel9s2ne4u450v54plrvin3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBmQOY48Ef0g4rm25EATsv202a-qF88lNM"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "484156668364-hjqu90j2frel9s2ne4u450v54plrvin3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

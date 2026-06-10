@@ -2,49 +2,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:redline/core/prefs.dart';
 import 'package:redline/features/auth/application/auth_controller.dart';
+import 'package:redline/features/auth/application/auth_providers.dart';
+import 'package:redline/features/auth/data/app_user.dart';
+import 'package:redline/features/auth/data/auth_exceptions.dart';
+import 'package:redline/features/auth/data/auth_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The stubbed account [AuthController]: state transitions, persistence of the
-/// stub "signed in" flag, and the demo error triggers. No Firebase is involved.
+/// The real account [AuthController]: it delegates to [AuthRepository] and runs
+/// the loading → authenticated / error lifecycle. A controllable fake repo
+/// stands in for Firebase so we assert state transitions and error surfacing.
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  Future<(ProviderContainer, SharedPreferences)> makeContainer({
-    Map<String, Object> seed = const {},
-  }) async {
-    SharedPreferences.setMockInitialValues(seed);
+  Future<ProviderContainer> makeContainer(AuthRepository repo) async {
+    SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final c = ProviderContainer(
-      overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPrefsProvider.overrideWithValue(prefs),
+        authRepositoryProvider.overrideWithValue(repo),
+      ],
     );
-    // Keep the notifier alive across the test.
-    c.listen(authControllerProvider, (_, _) {});
-    return (c, prefs);
+    c.listen(authControllerProvider, (_, _) {}); // keep the notifier alive
+    return c;
   }
 
-  test('starts unknown, then resolves to unauthenticated with no persisted flag',
-      () async {
-    final (c, _) = await makeContainer();
+  test('starts unauthenticated (no async resolve)', () async {
+    final c = await makeContainer(_FakeRepo());
     addTearDown(c.dispose);
-
-    expect(c.read(authControllerProvider).status, AuthStatus.unknown);
-
-    await Future<void>.delayed(const Duration(milliseconds: 1100));
     expect(c.read(authControllerProvider).status, AuthStatus.unauthenticated);
   });
 
-  test('resolves to authenticated when the stub flag is already persisted',
-      () async {
-    final (c, _) = await makeContainer(seed: {PrefKeys.authStubSignedIn: true});
-    addTearDown(c.dispose);
-
-    await Future<void>.delayed(const Duration(milliseconds: 1100));
-    expect(c.read(authControllerProvider).status, AuthStatus.authenticated);
-  });
-
-  test('signInWithEmail succeeds → authenticated and persists the flag',
-      () async {
-    final (c, prefs) = await makeContainer();
+  test('signInWithEmail success → authenticated', () async {
+    final c = await makeContainer(_FakeRepo());
     addTearDown(c.dispose);
 
     await c.read(authControllerProvider.notifier).signInWithEmail(
@@ -53,26 +41,39 @@ void main() {
         );
 
     expect(c.read(authControllerProvider).status, AuthStatus.authenticated);
-    expect(prefs.getBool(PrefKeys.authStubSignedIn), isTrue);
   });
 
-  test('signInWithEmail with the demo "wrong" password → error', () async {
-    final (c, prefs) = await makeContainer();
+  test('signInWithEmail maps the repo AuthException to error(message)', () async {
+    final c = await makeContainer(_FakeRepo(error: const AuthException('Incorrect email or password.')));
     addTearDown(c.dispose);
 
     await c.read(authControllerProvider.notifier).signInWithEmail(
           emailOrMobile: 'driver@redline.app',
-          password: 'wrong',
+          password: 'nope',
         );
 
     final state = c.read(authControllerProvider);
     expect(state.status, AuthStatus.error);
-    expect(state.message, isNotNull);
-    expect(prefs.getBool(PrefKeys.authStubSignedIn), isNot(true));
+    expect(state.message, 'Incorrect email or password.');
   });
 
-  test('signUpWithEmail with a "taken" email → error', () async {
-    final (c, _) = await makeContainer();
+  test('signUpWithEmail forwards to the repo and authenticates', () async {
+    final repo = _FakeRepo();
+    final c = await makeContainer(repo);
+    addTearDown(c.dispose);
+
+    await c.read(authControllerProvider.notifier).signUpWithEmail(
+          name: 'Ada',
+          email: 'ada@redline.app',
+          password: 'Passw0rd!',
+        );
+
+    expect(repo.signedUp, isTrue);
+    expect(c.read(authControllerProvider).status, AuthStatus.authenticated);
+  });
+
+  test('signUpWithEmail surfaces "That email is already in use."', () async {
+    final c = await makeContainer(_FakeRepo(error: const AuthException('That email is already in use.')));
     addTearDown(c.dispose);
 
     await c.read(authControllerProvider.notifier).signUpWithEmail(
@@ -81,44 +82,125 @@ void main() {
           password: 'Passw0rd!',
         );
 
+    final state = c.read(authControllerProvider);
+    expect(state.status, AuthStatus.error);
+    expect(state.message, 'That email is already in use.');
+  });
+
+  test('sendPasswordReset returns to unauthenticated (does not authenticate)', () async {
+    final repo = _FakeRepo();
+    final c = await makeContainer(repo);
+    addTearDown(c.dispose);
+
+    await c.read(authControllerProvider.notifier).sendPasswordReset(email: 'driver@redline.app');
+
+    expect(repo.resetEmail, 'driver@redline.app');
+    expect(c.read(authControllerProvider).status, AuthStatus.unauthenticated);
+  });
+
+  test('sendPasswordReset rethrows and sets error on failure', () async {
+    final c = await makeContainer(_FakeRepo(error: const AuthException('Network error. Try again.')));
+    addTearDown(c.dispose);
+
+    await expectLater(
+      c.read(authControllerProvider.notifier).sendPasswordReset(email: 'x@y.com'),
+      throwsA(isA<AuthException>()),
+    );
     expect(c.read(authControllerProvider).status, AuthStatus.error);
   });
 
-  test('sendPasswordReset returns to unauthenticated (does not authenticate)',
-      () async {
-    final (c, prefs) = await makeContainer();
-    addTearDown(c.dispose);
-
-    await c
-        .read(authControllerProvider.notifier)
-        .sendPasswordReset(email: 'driver@redline.app');
-
-    expect(c.read(authControllerProvider).status, AuthStatus.unauthenticated);
-    expect(prefs.getBool(PrefKeys.authStubSignedIn), isNot(true));
-  });
-
-  test('signOut clears the persisted flag and returns to unauthenticated',
-      () async {
-    final (c, prefs) = await makeContainer(seed: {PrefKeys.authStubSignedIn: true});
+  test('signOut calls the repo and returns to unauthenticated', () async {
+    final repo = _FakeRepo();
+    final c = await makeContainer(repo);
     addTearDown(c.dispose);
 
     await c.read(authControllerProvider.notifier).signOut();
 
+    expect(repo.signedOut, isTrue);
     expect(c.read(authControllerProvider).status, AuthStatus.unauthenticated);
-    expect(prefs.getBool(PrefKeys.authStubSignedIn), isFalse);
   });
 
   test('clearError moves an error state back to unauthenticated', () async {
-    final (c, _) = await makeContainer();
+    final c = await makeContainer(_FakeRepo(error: const AuthException('Incorrect email or password.')));
     addTearDown(c.dispose);
 
     await c.read(authControllerProvider.notifier).signInWithEmail(
           emailOrMobile: 'driver@redline.app',
-          password: 'wrong',
+          password: 'nope',
         );
     expect(c.read(authControllerProvider).status, AuthStatus.error);
 
     c.read(authControllerProvider.notifier).clearError();
     expect(c.read(authControllerProvider).status, AuthStatus.unauthenticated);
   });
+}
+
+/// A controllable [AuthRepository] double. When [error] is set, the email/Google
+/// methods throw it; otherwise they record that they were called.
+class _FakeRepo implements AuthRepository {
+  _FakeRepo({this.error});
+
+  final AuthException? error;
+  bool signedUp = false;
+  bool signedOut = false;
+  String? resetEmail;
+
+  @override
+  Future<void> signUpWithEmail({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    if (error != null) throw error!;
+    signedUp = true;
+  }
+
+  @override
+  Future<void> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (error != null) throw error!;
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {
+    if (error != null) throw error!;
+  }
+
+  @override
+  Future<void> sendPasswordReset({required String email}) async {
+    resetEmail = email;
+    if (error != null) throw error!;
+  }
+
+  @override
+  Future<void> signOut() async {
+    signedOut = true;
+  }
+
+  @override
+  Future<AppUser> signOutToGuest() async {
+    // The controller's signOut() funnels through here (sign out → re-anon).
+    signedOut = true;
+    return const AppUser(uid: 'anon', isAnonymous: true);
+  }
+
+  // ── Unused by these tests ─────────────────────────────────────────────────
+  @override
+  Stream<AppUser?> authStateChanges() => const Stream.empty();
+  @override
+  Future<AppUser> signInAnonymously() async => const AppUser(uid: 'anon', isAnonymous: true);
+  @override
+  Future<void> deleteAccount() async {}
+  @override
+  String? get currentUid => null;
+  @override
+  List<String> get currentProviderIds => const [];
+  @override
+  Future<void> reauthenticateWithPassword(String password) async {}
+  @override
+  Future<void> reauthenticateWithGoogle() async {}
+  @override
+  Future<void> linkGoogle() async {}
 }

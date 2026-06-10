@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,9 +12,8 @@ import 'widgets/brand_lockup.dart';
 import 'widgets/redline_text_field.dart';
 import 'widgets/terms_checkbox.dart';
 
-/// Sign Up — create an account (name, email, optional mobile, password). The CTA
-/// stays disabled until the form is valid and the terms box is checked. Auth is
-/// stubbed (see [AuthController]).
+/// Sign Up — create an account (name, email, password). The CTA stays disabled
+/// until the form is valid and the terms box is checked.
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
 
@@ -26,19 +24,16 @@ class SignUpScreen extends ConsumerStatefulWidget {
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
-  final _mobile = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
 
   final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
-  final _mobileFocus = FocusNode();
   final _passwordFocus = FocusNode();
   final _confirmFocus = FocusNode();
 
   String? _nameError;
   String? _emailError;
-  String? _mobileError;
   String? _passwordError;
   String? _confirmError;
   bool _agreed = false;
@@ -49,12 +44,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(authControllerProvider.notifier).clearError();
     });
-    for (final c in [_name, _email, _mobile, _password, _confirm]) {
+    for (final c in [_name, _email, _password, _confirm]) {
       c.addListener(_onChanged);
     }
     _bindBlur(_nameFocus, _validateName);
     _bindBlur(_emailFocus, _validateEmail);
-    _bindBlur(_mobileFocus, _validateMobile);
     _bindBlur(_passwordFocus, _validatePassword);
     _bindBlur(_confirmFocus, _validateConfirm);
   }
@@ -67,10 +61,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _email, _mobile, _password, _confirm]) {
+    for (final c in [_name, _email, _password, _confirm]) {
       c.dispose();
     }
-    for (final f in [_nameFocus, _emailFocus, _mobileFocus, _passwordFocus, _confirmFocus]) {
+    for (final f in [_nameFocus, _emailFocus, _passwordFocus, _confirmFocus]) {
       f.dispose();
     }
     super.dispose();
@@ -81,7 +75,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     // submit button tracks current validity.
     if (_nameError != null) _nameError = AuthValidators.name(_name.text);
     if (_emailError != null) _emailError = AuthValidators.email(_email.text);
-    if (_mobileError != null) _mobileError = AuthValidators.mobileOptional(_mobile.text);
     if (_passwordError != null) _passwordError = AuthValidators.password(_password.text);
     if (_confirmError != null) {
       _confirmError = AuthValidators.confirmPassword(_confirm.text, _password.text);
@@ -91,8 +84,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   void _validateName() => setState(() => _nameError = AuthValidators.name(_name.text));
   void _validateEmail() => setState(() => _emailError = AuthValidators.email(_email.text));
-  void _validateMobile() =>
-      setState(() => _mobileError = AuthValidators.mobileOptional(_mobile.text));
   void _validatePassword() =>
       setState(() => _passwordError = AuthValidators.password(_password.text));
   void _validateConfirm() => setState(
@@ -102,7 +93,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       _agreed &&
       AuthValidators.name(_name.text) == null &&
       AuthValidators.email(_email.text) == null &&
-      AuthValidators.mobileOptional(_mobile.text) == null &&
       AuthValidators.password(_password.text) == null &&
       AuthValidators.confirmPassword(_confirm.text, _password.text) == null;
 
@@ -110,19 +100,27 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     FocusScope.of(context).unfocus();
     _validateName();
     _validateEmail();
-    _validateMobile();
     _validatePassword();
     _validateConfirm();
     if (!_formValid) return;
     await ref.read(authControllerProvider.notifier).signUpWithEmail(
           name: _name.text.trim(),
           email: _email.text.trim(),
-          mobile: _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
           password: _password.text,
         );
   }
 
-  Future<void> _google() => ref.read(authControllerProvider.notifier).signInWithGoogle();
+  Future<void> _google() {
+    // Google sign-in doesn't use the email-form fields — clear any lingering
+    // field validation errors so they don't show during/after the Google flow.
+    setState(() {
+      _nameError = null;
+      _emailError = null;
+      _passwordError = null;
+      _confirmError = null;
+    });
+    return ref.read(authControllerProvider.notifier).signInWithGoogle();
+  }
 
   void _placeholder(String what) {
     ScaffoldMessenger.of(context)
@@ -179,20 +177,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email],
             errorText: _emailError,
-            onSubmitted: (_) => _mobileFocus.requestFocus(),
-            enabled: !loading,
-          ),
-          const SizedBox(height: 16),
-          RedlineTextField(
-            controller: _mobile,
-            focusNode: _mobileFocus,
-            icon: Icons.phone_outlined,
-            hint: 'Mobile number',
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.telephoneNumber],
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d+ ]'))],
-            errorText: _mobileError,
             onSubmitted: (_) => _passwordFocus.requestFocus(),
             enabled: !loading,
           ),

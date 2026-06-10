@@ -47,3 +47,6 @@ app.*.map.json
 # Firebase tooling
 .firebase/
 firebase-debug.log
+
+# Raw Inter font download (the two needed weights live in assets/fonts/)
+/Inter/

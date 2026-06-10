@@ -1,14 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/prefs.dart';
+import '../data/auth_exceptions.dart';
+import '../data/auth_repository.dart';
+import 'auth_providers.dart';
+import 'guest_session.dart';
 
 /// Where the account auth flow currently stands.
 ///
-/// [unknown] is the brief initial beat while we resolve persisted state (the
-/// splash shows here). Sign-in/up transition [loading] → [authenticated], or
-/// [error] with a user-facing [AuthState.message].
+/// [unknown] is a brief initial beat (the splash shows here); sign-in/up
+/// transition [loading] → [authenticated], or [error] with a user-facing
+/// [AuthState.message].
 enum AuthStatus { unknown, unauthenticated, loading, authenticated, error }
 
 /// Immutable auth state surfaced to the UI and the router gate.
@@ -43,100 +45,64 @@ class AuthState {
   String toString() => 'AuthState($status${message == null ? '' : ', "$message"'})';
 }
 
-/// A simulated auth failure. The stub throws these for demo inputs so reviewers
-/// can see the error banner; the real backend will surface its own messages.
-class AuthException implements Exception {
-  const AuthException(this.message);
-  final String message;
-  @override
-  String toString() => 'AuthException: $message';
-}
-
-/// **Stubbed** account auth controller.
+/// Account auth controller — the command surface the auth screens drive.
 ///
-/// Frontend-only for this phase: every method simulates network latency with
-/// `Future.delayed` and then flips state — **no Firebase is called**. The method
-/// signatures are the contract the future backend must implement so wiring is a
-/// drop-in (see `AUTH_NOTES.md`).
+/// Each method delegates to [AuthRepository] (the single Firebase seam) and runs
+/// it through a `loading → authenticated / error` lifecycle for the form's
+/// spinner + error banner. The repository maps Firebase/Google errors to
+/// friendly [AuthException]s, which this controller surfaces verbatim.
+///
+/// Note this state machine is the screens' *transient* UI state (is a request in
+/// flight? did it fail?), not the source of truth for "am I signed in" — that is
+/// derived from the real Firebase user via [isAuthenticatedProvider]. After a
+/// successful call the controller flips to [authenticated] so the screens'
+/// `ref.listen` redirect into the app; the Firebase emission settles the gates.
 ///
 /// Naming note: the app already exposes a Firebase `authStateProvider`
-/// (anonymous-auth, data-layer). To avoid a collision this controller is
-/// exposed as [authControllerProvider]; [authStatusProvider] is the convenience
-/// derive the router/UI watch.
+/// (anonymous-auth, data-layer). To avoid a collision this controller is exposed
+/// as [authControllerProvider]; [authStatusProvider] is the convenience derive.
 class AuthController extends Notifier<AuthState> {
-  static const _latency = Duration(milliseconds: 900);
-
-  late SharedPreferences _prefs;
+  late AuthRepository _repo;
   bool _disposed = false;
 
   @override
   AuthState build() {
-    // Capture prefs synchronously so the delayed resolve never touches `ref`
-    // after the provider is gone.
-    _prefs = ref.read(sharedPrefsProvider);
+    _repo = ref.read(authRepositoryProvider);
     ref.onDispose(() => _disposed = true);
-    // Resolve persisted (stub) sign-in after a brief beat so the splash shows.
-    _resolveInitial();
-    return const AuthState.unknown();
+    return const AuthState.unauthenticated();
   }
 
-  /// Sets [state] only while the provider is still alive (the delayed resolve
-  /// and in-flight method futures can outlive a disposed container in tests).
+  /// Sets [state] only while the provider is still alive (in-flight method
+  /// futures can outlive a disposed container in tests).
   void _set(AuthState next) {
     if (!_disposed) state = next;
   }
 
-  Future<void> _resolveInitial() async {
-    await Future<void>.delayed(_latency);
-    if (_disposed) return;
-    final signedIn = _prefs.getBool(PrefKeys.authStubSignedIn) ?? false;
-    // Guard: a method may have already moved us off `unknown` by now.
-    if (state.isUnknown) {
-      _set(signedIn
-          ? const AuthState.authenticated()
-          : const AuthState.unauthenticated());
-    }
-  }
-
-  // ── Public contract (mirrors the future backend exactly) ──────────────────
+  // ── Public contract (the signatures the auth screens call) ────────────────
 
   Future<void> signUpWithEmail({
     required String name,
     required String email,
-    String? mobile,
     required String password,
   }) =>
-      _run(() async {
-        await Future<void>.delayed(_latency);
-        // Demo-only error trigger so the error banner is reviewable.
-        if (email.trim().toLowerCase().startsWith('taken')) {
-          throw const AuthException('That email is already in use.');
-        }
-      });
+      _run(() => _repo.signUpWithEmail(name: name, email: email, password: password));
 
   Future<void> signInWithEmail({
     required String emailOrMobile,
     required String password,
   }) =>
-      _run(() async {
-        await Future<void>.delayed(_latency);
-        // Demo-only error trigger (password `wrong`) so reviewers see the banner.
-        if (password == 'wrong') {
-          throw const AuthException('Incorrect email or password.');
-        }
-      });
+      _run(() => _repo.signInWithEmail(email: emailOrMobile, password: password));
 
-  Future<void> signInWithGoogle() => _run(() async {
-        await Future<void>.delayed(_latency);
-      });
+  Future<void> signInWithGoogle() => _run(_repo.signInWithGoogle);
 
   /// Sends a reset link. Does **not** authenticate — returns to
-  /// [AuthStatus.unauthenticated] on success; the screen drives its own
-  /// "check your inbox" confirmation by awaiting this future.
+  /// [AuthStatus.unauthenticated] on success; the screen drives its own "check
+  /// your inbox" confirmation by awaiting this future. Rethrows on failure so the
+  /// screen doesn't show its confirmation.
   Future<void> sendPasswordReset({required String email}) async {
     _set(const AuthState.loading());
     try {
-      await Future<void>.delayed(_latency);
+      await _repo.sendPasswordReset(email: email);
       _set(const AuthState.unauthenticated());
     } on AuthException catch (e) {
       _set(AuthState.error(e.message));
@@ -147,37 +113,37 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// Signs out and re-establishes a guest so there is always a uid and the app
+  /// stays usable. Clears identity-tied local state (profile photo, loaded task,
+  /// cached name) first — see [reestablishGuest] — then sign-out + re-anon. The
+  /// auth stream emits null briefly between the two; the gates read that as guest
+  /// (not a login wall), and the new anon user lands back on the guest dashboard
+  /// with empty data.
   Future<void> signOut() async {
-    await _prefs.setBool(PrefKeys.authStubSignedIn, false);
+    try {
+      await reestablishGuest(ref);
+    } catch (_) {
+      // The re-anon can fail offline; we're still signed out. The splash
+      // bootstrap re-establishes a guest on next launch / when connectivity
+      // returns. (uid stays null until then — handled by the data providers.)
+    }
     _set(const AuthState.unauthenticated());
   }
 
-  /// DEV-ONLY: flip between authenticated (signed-in) and guest while the
-  /// backend is stubbed — wired to a hidden long-press on the Cluster gauge so
-  /// the guest/auth UI paths can be exercised without real sign-in.
-  void debugToggleAuth() {
-    final next = state.isAuthenticated
-        ? const AuthState.unauthenticated()
-        : const AuthState.authenticated();
-    _prefs.setBool(PrefKeys.authStubSignedIn, next.isAuthenticated);
-    _set(next);
-  }
-
-  /// Clear a lingering [AuthStatus.error] (call when entering an auth screen so
-  /// a prior screen's error doesn't bleed in). No-op unless currently erroring.
+  /// Clear a lingering [AuthStatus.error] (call when entering an auth screen so a
+  /// prior screen's error doesn't bleed in). No-op unless currently erroring.
   void clearError() {
     if (state.isError) _set(const AuthState.unauthenticated());
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
-  /// Runs [body] inside the loading → authenticated/error lifecycle and
-  /// persists the stub "signed in" flag on success.
+  /// Runs [body] inside the loading → authenticated/error lifecycle, surfacing
+  /// the repository's friendly [AuthException] message on failure.
   Future<void> _run(Future<void> Function() body) async {
     _set(const AuthState.loading());
     try {
       await body();
-      await _prefs.setBool(PrefKeys.authStubSignedIn, true);
       _set(const AuthState.authenticated());
     } on AuthException catch (e) {
       _set(AuthState.error(e.message));
@@ -187,7 +153,7 @@ class AuthController extends Notifier<AuthState> {
   }
 }
 
-/// The stubbed account auth controller + its state. Watch this for the current
+/// The account auth controller + its state. Watch this for the current
 /// [AuthState]; read `.notifier` to invoke sign-in/up/out.
 final authControllerProvider =
     NotifierProvider<AuthController, AuthState>(AuthController.new);
@@ -197,9 +163,16 @@ final authStatusProvider = Provider<AuthStatus>(
   (ref) => ref.watch(authControllerProvider).status,
 );
 
-/// Is the account signed in? The single boolean the guest/auth UI gates read
-/// (anything other than [AuthStatus.authenticated] — including the brief
-/// `unknown` resolve — counts as guest). Overridable in tests.
-final isAuthenticatedProvider = Provider<bool>(
-  (ref) => ref.watch(authStatusProvider) == AuthStatus.authenticated,
-);
+/// Is the account signed in? The single boolean the guest/auth UI gates read.
+///
+/// The source of truth is the **real Firebase user**, not the controller's
+/// transient command state: a non-anonymous user = signed in; an anonymous
+/// (guest) user — or none yet — = not authenticated. It follows
+/// [authStateProvider] (Firebase `authStateChanges`), so the gate flips exactly
+/// when the real stream emits the non-anonymous user — there's no race where it
+/// reads `authenticated` from the controller before Firebase has caught up.
+/// Overridable in tests.
+final isAuthenticatedProvider = Provider<bool>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  return user != null && !user.isAnonymous;
+});

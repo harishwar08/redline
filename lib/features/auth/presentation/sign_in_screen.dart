@@ -85,7 +85,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         );
   }
 
-  Future<void> _google() => ref.read(authControllerProvider.notifier).signInWithGoogle();
+  Future<void> _google() {
+    // Google sign-in doesn't use the email/password fields — clear any lingering
+    // field validation errors so they don't show during/after the Google flow.
+    setState(() {
+      _idError = null;
+      _passwordError = null;
+    });
+    return ref.read(authControllerProvider.notifier).signInWithGoogle();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,8 +124,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             controller: _id,
             focusNode: _idFocus,
             icon: Icons.mail_outline,
-            label: 'Email or mobile number',
-            hint: 'Enter email or mobile number',
+            label: 'Email',
+            hint: 'Enter your email',
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.username],

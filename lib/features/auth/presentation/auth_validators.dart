@@ -4,8 +4,6 @@
 abstract final class AuthValidators {
   // Pragmatic email shape: something@something.tld (no exotic edge cases).
   static final _email = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.-]+$');
-  // Optional mobile: digits with an optional leading +, 7–15 digits.
-  static final _mobile = RegExp(r'^\+?\d{7,15}$');
   static final _letter = RegExp(r'[A-Za-z]');
   static final _digit = RegExp(r'\d');
   static final _symbol = RegExp(r'[^A-Za-z0-9]');
@@ -25,14 +23,6 @@ abstract final class AuthValidators {
     final v = (value ?? '').trim();
     if (v.isEmpty) return 'Please enter your email';
     if (!_email.hasMatch(v)) return 'Enter a valid email address';
-    return null;
-  }
-
-  /// Mobile — optional; if present, must look like a phone number.
-  static String? mobileOptional(String? value) {
-    final v = (value ?? '').trim();
-    if (v.isEmpty) return null;
-    if (!_mobile.hasMatch(v)) return 'Enter a valid mobile number';
     return null;
   }
 

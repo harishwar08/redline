@@ -1,4 +1,34 @@
-# REDLINE — Authentication (frontend) notes
+# REDLINE — Authentication notes
+
+> **Status update:** auth is now **wired to Firebase** (email/password + Google
+> via `google_sign_in` v7). The repository (`FirebaseAuthRepository`) is the
+> single Firebase seam; `AuthController` is a thin command surface over it. The
+> earlier stub (latency + `authStubSignedIn` pref + Cluster long-press toggle)
+> has been removed. Sections below that describe the *stub* are historical.
+
+## ⏳ Pre-launch follow-ups (tracked — must land before launch)
+
+- **✅ Re-auth retry on account delete — DONE.** `DataReset.run()` no longer
+  swallows `ReauthRequiredException` (it rethrows; other delete errors are still
+  swallowed so the app resets locally). The Settings delete handler catches it,
+  picks the method from `AuthRepository.currentProviderIds` — email → password
+  re-entry dialog → `reauthenticateWithPassword`; Google → `reauthenticateWithGoogle`
+  (re-runs Google sign-in, guarded to the *same* account) — then retries the
+  complete reset. The cloud-data deletes are idempotent, so the retry re-runs with
+  no double-delete. Cancel / wrong-password / wrong-Google-account surface a clear
+  message. Covered by `test/reauth_delete_test.dart`. The re-auth step appears
+  only when Firebase demands it, behind the existing destructive confirm.
+
+- **Live profile-write smoke test.** §4 verifies the written profile shape
+  against `fake_cloud_firestore` (see `test/profile_bootstrap_test.dart`), but a
+  fake can't catch a rules mismatch. **TODO:** before launch, on a real device
+  against the *deployed* `firestore.rules`, do a "sign up → `users/{uid}.profile`
+  appears with name + createdAt + email, write accepted" smoke test (and the
+  first-Google-sign-in equivalent).
+
+The historical stub notes below are retained for context.
+
+---
 
 This phase ships the **account auth frontend only** — Sign In / Sign Up / Forgot
 Password screens, the shared widgets, a **stubbed** auth controller, and the

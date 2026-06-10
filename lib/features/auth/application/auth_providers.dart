@@ -1,14 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firestore_providers.dart';
 import '../data/app_user.dart';
 import '../data/auth_repository.dart';
 import '../data/firebase_auth_repository.dart';
 
 /// The auth repository. Firebase-backed in the app; overridden with a fake in
-/// tests (the single seam for swapping the data source).
+/// tests (the single seam for swapping the data source). Takes Firestore too so
+/// account bootstrap can write the profile doc through the same seam.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return FirebaseAuthRepository(FirebaseAuth.instance);
+  return FirebaseAuthRepository(FirebaseAuth.instance, ref.watch(firestoreProvider));
 });
 
 /// Live auth state — null when signed out, an [AppUser] once signed in.

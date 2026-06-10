@@ -6,6 +6,8 @@ import '../../../core/design_system.dart';
 import '../../../core/error_reporter.dart';
 import '../../../shared/widgets/confirm_sheet.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../auth/application/auth_providers.dart';
+import '../../auth/data/auth_exceptions.dart';
 import '../../cluster/data/settings_controller.dart';
 import '../../profile/application/data_reset.dart';
 
@@ -111,7 +113,12 @@ class SettingsScreen extends ConsumerWidget {
                         _ActionRow(
                           label: 'Sign out',
                           trailingIcon: Icons.logout,
-                          onTap: () => ref.read(authControllerProvider.notifier).signOut(),
+                          onTap: () async {
+                            await ref.read(authControllerProvider.notifier).signOut();
+                            // Land on the guest dashboard (not the now-guest
+                            // Settings) once back to a guest session.
+                            if (context.mounted) context.go('/');
+                          },
                         )
                       else
                         _ActionRow(
@@ -154,18 +161,170 @@ class SettingsScreen extends ConsumerWidget {
       cancelLabel: 'Cancel',
     );
     if (!ok) return;
+    final reset = ref.read(dataResetProvider);
     try {
-      await ref.read(dataResetProvider).run();
-      scaffoldMessengerKey.currentState
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('Your data has been reset.'),
-        ));
+      await reset.run();
+      _toast('Your data has been reset.');
+    } on ReauthRequiredException {
+      // The account is too old in this session to delete — confirm identity,
+      // then retry the complete reset (idempotent on the already-deleted data).
+      if (!context.mounted) return;
+      final reauthed = await _reauthenticateForDelete(context, ref);
+      if (!reauthed) return; // a message was already surfaced
+      try {
+        await reset.run();
+        _toast('Your data has been reset.');
+      } catch (e, st) {
+        ref.read(errorReporterProvider).report(e, st,
+            reason: 'data reset (retry)', userMessage: "Couldn't reset your data.");
+      }
     } catch (e, st) {
       ref.read(errorReporterProvider).report(e, st,
           reason: 'data reset', userMessage: "Couldn't reset your data.");
     }
+  }
+
+  /// Re-authenticate for the sensitive delete, using whichever provider the
+  /// account signed in with. Returns true only on a fresh, successful re-auth;
+  /// surfaces a clear message (and returns false) on cancel / wrong password /
+  /// wrong Google account.
+  Future<bool> _reauthenticateForDelete(BuildContext context, WidgetRef ref) async {
+    final repo = ref.read(authRepositoryProvider);
+    final providers = repo.currentProviderIds;
+    try {
+      if (providers.contains('password')) {
+        final password = await _promptPassword(context);
+        if (password == null) {
+          _toast('Account deletion cancelled.');
+          return false;
+        }
+        await repo.reauthenticateWithPassword(password);
+        return true;
+      }
+      if (providers.contains('google.com')) {
+        await repo.reauthenticateWithGoogle();
+        return true;
+      }
+      _toast('Please sign in again, then delete your account.');
+      return false;
+    } on AuthException catch (e) {
+      _toast(e.message); // wrong password / cancelled Google / different account
+      return false;
+    }
+  }
+
+  Future<String?> _promptPassword(BuildContext context) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => const _ReauthPasswordDialog(),
+    );
+  }
+
+  void _toast(String message) {
+    scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(message),
+      ));
+  }
+}
+
+/// Password re-entry for confirming a sensitive action (account deletion).
+/// Pops the entered password, or null on cancel / dismiss.
+class _ReauthPasswordDialog extends StatefulWidget {
+  const _ReauthPasswordDialog();
+
+  @override
+  State<_ReauthPasswordDialog> createState() => _ReauthPasswordDialogState();
+}
+
+class _ReauthPasswordDialogState extends State<_ReauthPasswordDialog> {
+  final _controller = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: DS.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s24, DS.s24, DS.s18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Confirm your password', style: DSText.cardTitle, textAlign: TextAlign.center),
+            const SizedBox(height: DS.s12),
+            Text(
+              'For your security, re-enter your password to delete your account.',
+              textAlign: TextAlign.center,
+              style: DSText.body.copyWith(color: DS.textSecondary),
+            ),
+            const SizedBox(height: DS.s18),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _controller,
+              builder: (context, value, _) => TextField(
+                controller: _controller,
+                obscureText: _obscure,
+                autofocus: true,
+                style: const TextStyle(
+                    fontFamily: DS.fontFamily, color: DS.textPrimary, fontSize: 16),
+                onSubmitted: (_) =>
+                    value.text.isEmpty ? null : Navigator.pop(context, value.text),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: const TextStyle(fontFamily: DS.fontFamily, color: DS.textTertiary),
+                  filled: true,
+                  fillColor: DS.surfaceInput,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(DS.rInput),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        color: DS.textTertiary),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: DS.s18),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel',
+                        style: TextStyle(fontFamily: DS.fontFamily, color: DS.textSecondary)),
+                  ),
+                ),
+                const SizedBox(width: DS.s8),
+                Expanded(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _controller,
+                    builder: (context, value, _) => TextButton(
+                      onPressed: value.text.isEmpty
+                          ? null
+                          : () => Navigator.pop(context, value.text),
+                      child: const Text('Confirm',
+                          style: TextStyle(
+                              fontFamily: DS.fontFamily, color: DS.accent, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

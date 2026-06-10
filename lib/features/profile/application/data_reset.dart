@@ -7,6 +7,8 @@ import '../../../core/firestore_providers.dart';
 import '../../../core/prefs.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/application/auth_providers.dart';
+import '../../auth/application/guest_session.dart';
+import '../../auth/data/auth_exceptions.dart';
 import '../../cluster/data/settings_controller.dart';
 import '../../cluster/data/timer_controller.dart';
 import '../../garage/data/livery_controller.dart';
@@ -44,15 +46,27 @@ class DataReset {
 
     // Delete the Firebase Auth account, then wipe local state and mint a fresh
     // anonymous account so per-user data paths keep working.
+    //
+    // A stale session throws [ReauthRequiredException] — let it propagate so the
+    // caller can re-authenticate and retry. The cloud-data deletions above are
+    // idempotent (empty re-deletes are no-ops), so a retried run() completes
+    // cleanly with no double-delete. Other delete failures are swallowed (the
+    // data is already gone) so the app still resets locally and re-anons.
     final auth = _ref.read(authRepositoryProvider);
     try {
       await auth.deleteAccount();
-    } catch (_) {/* e.g. requires-recent-login — data is already gone */}
+    } on ReauthRequiredException {
+      rethrow;
+    } catch (_) {/* non-reauth failure — data is already gone; reset locally */}
 
     await _ref.read(sharedPrefsProvider).clear();
 
     try {
-      await auth.signInAnonymously();
+      // Same "re-establish guest" path as plain sign-out — the identity-clear is
+      // a no-op here (prefs were just wiped) but keeps the two flows on one
+      // shared helper so they can't drift. Also signs out if the delete needed
+      // re-auth and left a session, then re-anons.
+      await reestablishGuest(_ref);
     } catch (_) {/* offline — the splash re-bootstraps on next launch */}
 
     // Reload everything that reads from shared_preferences / auth so the UI
@@ -62,7 +76,7 @@ class DataReset {
     _ref.invalidate(liveryControllerProvider);
     _ref.invalidate(timerControllerProvider);
     _ref.invalidate(profilePhotoProvider);
-    _ref.invalidate(authControllerProvider); // stub account → guest (flag cleared)
+    _ref.invalidate(authControllerProvider); // reset the auth command state → guest
   }
 
   Future<void> _deleteAll(

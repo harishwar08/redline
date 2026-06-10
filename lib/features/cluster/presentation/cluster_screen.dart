@@ -10,7 +10,6 @@ import '../../../core/typography.dart';
 import '../../../shared/services/accel_sound.dart';
 import '../../../shared/services/slam_sound.dart';
 import '../../../shared/widgets/confirm_sheet.dart';
-import '../../auth/application/auth_controller.dart';
 import '../../garage/data/livery_controller.dart';
 import '../../tasks/application/stint_providers.dart';
 import '../data/settings_controller.dart';
@@ -118,35 +117,16 @@ class ClusterScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       const Spacer(),
-                      // Hidden DEV affordance: long-press the gauge to flip the
-                      // stubbed account auth state (guest ⇄ authenticated) while
-                      // the backend isn't wired. Remove with the stub.
-                      GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onLongPress: () {
-                          ref.read(authControllerProvider.notifier).debugToggleAuth();
-                          final authed = ref.read(isAuthenticatedProvider);
-                          ScaffoldMessenger.of(context)
-                            ..hideCurrentSnackBar()
-                            ..showSnackBar(SnackBar(
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(milliseconds: 1200),
-                              backgroundColor: RColors.dialBlack2,
-                              content: Text('DEV · ${authed ? 'AUTHENTICATED' : 'GUEST'}',
-                                  style: RText.plateLabel(color: RColors.cream)),
-                            ));
-                        },
-                        child: Gauge(
-                          diameter: diameter,
-                          modeLabel: state.mode.gaugeLabel,
-                          running: state.isRunning,
-                          endAt: state.endAt,
-                          remainingMs: state.remainingMs,
-                          totalMs: state.totalMs,
-                          accent: accent,
-                          onRevStart: () { if (soundOn) accel.start(); }, // gated on Sounds
-                          onRevEnd: accel.stop,
-                        ),
+                      Gauge(
+                        diameter: diameter,
+                        modeLabel: state.mode.gaugeLabel,
+                        running: state.isRunning,
+                        endAt: state.endAt,
+                        remainingMs: state.remainingMs,
+                        totalMs: state.totalMs,
+                        accent: accent,
+                        onRevStart: () { if (soundOn) accel.start(); }, // gated on Sounds
+                        onRevEnd: accel.stop,
                       ),
                       const SizedBox(height: RSpace.l),
                       // Card + controls keep their original ~12px side margin

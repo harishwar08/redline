@@ -34,11 +34,6 @@ class PrefKeys {
   // later). Stores the picked image's file path.
   static const profilePhotoPath = 'driver.photoPath';
 
-  // Account auth (FRONTEND STUB ONLY — see AuthController / AUTH_NOTES.md).
-  // The real backend will replace this with Firebase auth state; the stub
-  // persists "signed in" here so the gate behaves realistically between runs.
-  static const authStubSignedIn = 'auth.stubSignedIn';
-
   // Active task
   static const activeTaskId = 'tasks.activeId';
   static const tasksJson = 'tasks.json';
